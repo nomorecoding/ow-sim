@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:single": "tsc && SINGLE=1 vite build && mv single/index.html 'single/守望天梯人生.html'",
     "preview": "vite preview"
   },
   "devDependencies": {
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

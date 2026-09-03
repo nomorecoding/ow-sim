@@ -1,0 +1,69 @@
+import type { Achievement } from '../types'
+
+export const ACHIEVEMENTS: Achievement[] = [
+  // —— 段位 ——
+  { id: 'first_season', name: '第一个赛季', desc: '打完一个完整赛季' },
+  { id: 'reach_diamond', name: '钻石守门员', desc: '赛季内触及钻石' },
+  { id: 'reach_master', name: '大师墙', desc: '赛季内触及大师' },
+  { id: 'reach_gm', name: '宗师', desc: '赛季内触及宗师' },
+  { id: 'reach_champ', name: '英杰', desc: '赛季内触及英杰' },
+  { id: 'reach_top', name: '顶尖500', desc: '本季 ≥25 胜并登上榜单' },
+  { id: 'bronze_end', name: '地心探索', desc: '以青铜结束一个赛季' },
+  // —— 天赋 ——
+  { id: 'talent_something', name: '有点东西', desc: '摇到「有点东西」档天赋' },
+  { id: 'talent_genius', name: '天才', desc: '摇到「天才」档天赋' },
+  { id: 'talent_monster', name: '怪物', desc: '摇到「怪物」档天赋' },
+  { id: 'talent_barrel3', name: '木桶三连', desc: '连续三个赛季摇到木桶' },
+  // —— 修正词 ——
+  { id: 'reversal10', name: '大逆转常客', desc: '一赛季 40 次「大逆转」' },
+  { id: 'uphill20', name: '逆风局专家', desc: '一赛季 80 次「逆风局」' },
+  { id: 'protect5', name: '保级边缘人', desc: '一赛季 25 次「保级保护」' },
+  { id: 'pressure', name: '被压力了', desc: '看到「压力」修正词' },
+  // —— 云泥 ——
+  { id: 'cloudmud_any', name: '差一分', desc: '任一大段 1·99 结束赛季' },
+  { id: 'cloudmud_plat', name: '云泥之隔', desc: '白金1 · 99分。颜色都不一样。' },
+  { id: 'cloudmud_master', name: '大师1·99', desc: '差 1 分宗师，泾渭分明' },
+  // —— 连胜连败 / 心态 ——
+  { id: 'streak10', name: '十连胜', desc: '赛季内 10 连胜' },
+  { id: 'lose10', name: '十连败', desc: '赛季内 10 连败还没卸载' },
+  { id: 'muted3', name: '红框常客', desc: '一赛季被禁言 3 次' },
+  { id: 'clean_season', name: '净玩', desc: '整赛季不碰黑市，信誉 ≥ 80' },
+  // —— 收集 ——
+  { id: 'gold_gun', name: '第一把金枪', desc: '3000 竞技点换金枪' },
+  { id: 'gold_gun5', name: '金光闪闪', desc: '5 把金枪' },
+  { id: 'jade_gun', name: '玉枪', desc: '年度限定玉枪' },
+  { id: 'rich', name: '存款过万', desc: '现金 ≥ 10000' },
+  { id: 'broke', name: '钱包见底', desc: '现金归零' },
+  { id: 'gear_max', name: '设备党', desc: '设备升满' },
+  // —— 黑化线 ——
+  { id: 'first_escort', name: '花钱买段', desc: '第一次请代练 / 陪玩' },
+  { id: 'escort_388', name: '388 一小时', desc: '请过 OWL 级陪玩' },
+  { id: 'boost_trap', name: '代练后遗症', desc: '代练结束后一赛季掉回原段' },
+  { id: 'first_boost', name: '黑化', desc: '第一次接代练单' },
+  { id: 'booster_landed', name: '上岸', desc: '代练累计收入 6000，买房上岸' },
+  { id: 'cheat_on', name: '开挂了', desc: '第一次开挂' },
+  { id: 'banned_first', name: '封号', desc: '第一次被封' },
+  { id: 'banned_3', name: '惯犯', desc: '累计封号 3 次' },
+  { id: 'cheat_survive', name: '漏网之鱼', desc: '开挂打满一个赛季没被封' },
+  // —— 人生 ——
+  { id: 'stage_worker', name: '打工人', desc: '毕业上班，额度永久下降' },
+  { id: 'stage_dropout', name: '辍学', desc: '辍学全职打天梯' },
+  { id: 'stage_streamer', name: '开播', desc: '转型主播' },
+  { id: 'stage_free', name: '财富自由', desc: '不用上班了' },
+  { id: 'age_25', name: '二十五岁', desc: '25 岁还在打天梯' },
+  { id: 'age_30', name: '三十而立', desc: '30 岁还在打天梯' },
+  // —— 职业线（荣誉，金框） ——
+  { id: 'career_scouted', name: '被看见', desc: '收到战队经理私信', honor: true },
+  { id: 'career_signed', name: '签约', desc: '通过试训，成为职业选手', honor: true },
+  { id: 'career_partner', name: '合作战队', desc: '效力 OWCS 合作战队', honor: true },
+  { id: 'career_regular', name: '常规赛', desc: '打进 OWCS 中国赛区常规赛', honor: true },
+  { id: 'career_playoffs', name: '季后赛', desc: '打进地区季后赛', honor: true },
+  { id: 'career_regional_champ', name: '中国冠军', desc: 'OWCS 中国赛区 Stage 冠军', honor: true },
+  { id: 'career_intl', name: '出国比赛', desc: '代表赛区参加国际赛', honor: true },
+  { id: 'career_world_champ', name: '世界冠军', desc: '国际赛夺冠', honor: true },
+  { id: 'career_worldcup', name: '国家队', desc: '入选守望先锋世界杯国家队', honor: true },
+  { id: 'career_cut', name: '被裁', desc: '转会窗没拿到续约', honor: true },
+  { id: 'career_retired', name: '退役', desc: '职业生涯结束', honor: true },
+]
+
+export const ACH_MAP: Record<string, Achievement> = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]))
