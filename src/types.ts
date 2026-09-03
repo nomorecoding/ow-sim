@@ -12,6 +12,8 @@ export interface RankState {
 
 /** 天赋档：决定实力成长斜率分布与突破加成，一辈子不变 */
 export type TalentTier = 'barrel' | 'normal' | 'something' | 'genius' | 'monster'
+/** 隐藏天赋：极小概率叠在天赋之上，各自通向一个隐藏结局 */
+export type HiddenTalent = 'aim' | 'clutch' | 'late' | 'glass'
 
 /** 人生阶段：决定每季热情消耗与斜率 */
 export type LifeStage = 'student' | 'fulltime' | 'worker' | 'free'
@@ -49,6 +51,8 @@ export interface Achievement {
   desc: string
   /** 职业模式荣誉：金框展示，解锁前连描述都不给 */
   honor?: boolean
+  /** 隐藏成就：解锁前只显示「？」 */
+  secret?: boolean
 }
 
 /** 全局成长：只改天赋分布，不改单局曲线 */
@@ -69,19 +73,15 @@ export interface DirtyHistory {
   cheatSeasons: number
 }
 
-/** 需要玩家点一下的抉择 */
-export interface Choice {
-  id: string
-  title: string
-  body: string
-  options: Array<{ id: string; label: string; cls?: string; sub?: string }>
-}
-
 /* ———————————————————— 一段人生（天梯阶段） ———————————————————— */
 
 export interface LifeState {
   persona: Persona
   talent: TalentTier
+  /** 隐藏天赋（极小概率） */
+  hidden: HiddenTalent | null
+  /** 玻璃手：手腕已经废过一次 */
+  injured: boolean
   /** 隐藏真实实力（分数尺度） */
   mmr: number
   /** 显示段位 */
@@ -146,12 +146,11 @@ export interface LifeState {
   scoutedAt?: { age: number; rank: RankState }
   /** 拒绝过试训的次数 */
   refusedTrials: number
-  /** 是否已做过瓶颈抉择 / 死线抉择（一局各最多一次） */
+  /** 一辈子只触发一次的节点（死线等） */
   choiceUsed: Record<string, boolean>
 
   logs: LogLine[]
   highlights: LogLine[]
-  choice: Choice | null
   achieved: Record<string, boolean>
   newAchievements: string[]
   ending?: SeasonEnding
@@ -195,8 +194,6 @@ export interface ProOffer {
   role: 'starter' | 'bench'
 }
 
-export type ProChoice = Choice
-
 export interface ProTitles {
   regional: number
   intl: number
@@ -210,6 +207,8 @@ export interface ProState {
   runs: number
   /** 生涯进行中 */
   active: boolean
+  /** 从天梯带进来的隐藏天赋 */
+  hidden?: HiddenTalent | null
   age: number
   /** 生涯第几年 */
   year: number
@@ -244,15 +243,13 @@ export interface ProState {
   lifetimeBan: boolean
   banReason?: string
   yearsPlayed: number
-  /** 本年日志与高光（页面刷新丢失，无妨） */
+  /** 本段滚动的日志与高光（页面刷新丢失，无妨） */
   log: LogLine[]
   highlights: LogLine[]
-  /** 待处理抉择 */
-  choice: ProChoice | null
   /** 生涯结束时获得的经验 / 升级数（结算页用） */
   endExp?: number
   endUps?: number
-  /** 本年是否已结算（等玩家点「下一年」） */
+  /** 本年是否已滚完 */
   yearDone: boolean
   /** 本年内 Stage 进度 1–3，0 = 年初 */
   stageAt: number
@@ -292,6 +289,7 @@ export interface MetaSave {
 
   /** 调试：下局强制天赋 */
   debugTalent?: TalentTier
+  debugHidden?: HiddenTalent
 
   /* —— 职业阶段 —— */
   pro: ProState

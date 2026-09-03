@@ -1,4 +1,4 @@
-import type { Form, LifeStage, MajorTier, Persona, RankState, TalentTier, Team } from '../types'
+import type { Form, HiddenTalent, LifeStage, MajorTier, Persona, RankState, TalentTier, Team } from '../types'
 
 export const MAJOR_ORDER: MajorTier[] = [
   'bronze', 'silver', 'gold', 'plat', 'emerald', 'diamond', 'master', 'gm', 'champ', 'top',
@@ -171,14 +171,35 @@ export const TRIAL_BASE = 0.55
 /** 有代练 / 陪玩记录时试训通过率的折扣（开挂记录直接政审不过） */
 export const TRIAL_DIRTY_MULT = 0.6
 
-/* ———————————— 成就奖励：按成就数解锁的传承 ———————————— */
+/* ———————————— 成就奖励：成就攒到一定数量，下辈子永久带着的 buff ———————————— */
 export const ACH_PERKS: Array<{ n: number; id: string; name: string; desc: string }> = [
-  { n: 10, id: 'reroll', name: '重摇', desc: '开局摇两次天赋，取高' },
-  { n: 20, id: 'rich', name: '出身', desc: '30% 生在富裕家庭：热情 +150、现金 +20000、没有房租' },
-  { n: 30, id: 'scout', name: '人脉', desc: '被发掘概率 ×1.5' },
-  { n: 40, id: 'passion', name: '热爱', desc: '起始热情 +100' },
-  { n: 50, id: 'pro', name: '底子', desc: '职业状态成长起点 +3' },
+  { n: 10, id: 'reroll', name: '天赋重摇', desc: '每辈子开局摇两次天赋，取高的那次' },
+  { n: 20, id: 'rich', name: '富裕出身', desc: '每辈子 30% 生在有钱人家：热情 +150、现金 +20000、不用交房租' },
+  { n: 30, id: 'scout', name: '教练人脉', desc: '被青训教练私信的概率 ×1.5' },
+  { n: 40, id: 'passion', name: '更能打', desc: '每辈子起始热情 +100（多打两三季）' },
+  { n: 50, id: 'pro', name: '职业底子', desc: '进职业后状态成长起点 +3（更容易摇到好状态）' },
 ]
+
+/* ———————————— 隐藏天赋：极小概率叠在天赋之上，各自通向一个隐藏结局 ———————————— */
+export const HIDDEN_ORDER: HiddenTalent[] = ['aim', 'clutch', 'late', 'glass']
+export const HIDDEN_INFO: Record<HiddenTalent, { name: string; p: number; line: string; proBonus: number }> = {
+  aim:    { name: '天生神枪', p: 0.8, line: '第一把就有人在公屏问你开没开。你没有。', proBonus: 4 },
+  clutch: { name: '大心脏',   p: 0.8, line: '越是决胜局手越稳。墙对你来说只是一道门。', proBonus: 2 },
+  late:   { name: '晚熟',     p: 0.8, line: '二十岁前平平无奇。别人退坑的年纪，你才开始涨。', proBonus: 0 },
+  glass:  { name: '玻璃手',   p: 0.8, line: '手感好到吓人，但手腕是借来的。', proBonus: 3 },
+}
+/** 每级额外 +0.02%（合计），最多 +2% */
+export const HIDDEN_PER_LEVEL = 0.02
+export const HIDDEN_LEVEL_CAP = 2
+/** 玻璃手：19 岁起每季受伤概率；伤后斜率打折 */
+export const GLASS_INJURY_P = 0.05
+export const GLASS_INJURY_MULT = 0.45
+export const GLASS_INJURY_PASSION = 200
+/** 晚熟：退坑年龄与被发掘年龄上限放宽；热情烧得慢（开局多给、每年多补） */
+export const LATE_QUIT_AGE = 36
+export const LATE_SCOUT_MAX_AGE = 27
+export const LATE_PASSION_START = 300
+export const LATE_PASSION_YEAR = 130
 
 /* ———————————— 职业线（OWCS 中国赛区） ———————————— */
 

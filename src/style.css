@@ -220,11 +220,27 @@ b { font-weight: 600; color: var(--bone); }
 .tal-line .talent-badge { padding-left: 8px; letter-spacing: 0.14em; }
 .tal-line .talent-badge .num { font-size: 0.86rem; letter-spacing: 0; margin-left: 2px; }
 .tal-line .sep { color: var(--bone-faint); }
-.perk {
-  font-family: var(--display); font-size: 0.74rem; letter-spacing: 0.2em;
-  padding: 3px 10px; border: 1px solid var(--hair); color: var(--bone-faint);
+/* 成就奖励：一行一个，名字 + 白话说明 */
+.perk-row { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; font-size: 0.8rem; border-bottom: 1px solid var(--hair); }
+.perk-row:last-child { border-bottom: 0; }
+.perk-row b { font-family: var(--display); font-weight: 500; letter-spacing: 0.14em; color: var(--brass); white-space: nowrap; font-size: 0.74rem; }
+.perk-row span { color: var(--bone-dim); }
+.perk-row.next b { color: var(--bone-faint); }
+.perk-row.next span { color: var(--bone-faint); }
+
+/* 隐藏天赋：紫罗兰，和金色的怪物区分开 */
+.tal-h {
+  color: #b8a1e6;
+  background: linear-gradient(90deg, #d9ccf5, #a88fe0 40%, #efe8ff 70%, #a88fe0);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  border-left-color: #a88fe0;
+  animation: shimmer 4s linear infinite;
+  background-size: 300% 100%;
 }
-.perk.on { color: var(--brass); border-color: rgba(201, 165, 92, 0.45); }
+.hidden { color: #b8a1e6; border-left-color: rgba(168, 143, 224, 0.6) !important; }
+.hl.hidden { border-left-width: 1px; }
+.ach-row.secret b::before { content: "？ "; color: #a88fe0; font-size: 0.7em; }
+.ach-row.secret.got b { color: #b8a1e6; }
 
 .tal-row {
   display: grid; grid-template-columns: 92px 1fr 46px 30px;

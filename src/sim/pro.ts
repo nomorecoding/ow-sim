@@ -1,11 +1,11 @@
 /**
  * 职业阶段：从天梯人生被发掘后接上。以「年」为单位：年初摇状态 → 三个 Stage 逐场滚动 → 年末转会窗（自动挑）。
  * 全程滚屏，没有抉择；转会 / 板凳 / 假赛 / 宫斗 / 解散全是随机事件。
- * 由 life.ts 驱动：beginYear → proStep 直到 'done' → commitYear；生涯结束写 ending。
+ * 由 main.ts 驱动：beginCareerRun → proStep 直到 'done'（退役 / 永封），签约到退役一路滚完。
  */
-import type { Form, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
+import type { Form, HiddenTalent, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
+  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, HIDDEN_INFO, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
   PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE,
   SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
@@ -21,7 +21,7 @@ export function freshPro(): ProState {
     runs: 0, active: false, age: 17, year: 0, teamId: null, salary: 0,
     form: 'ok', skill: 55, fame: 0, benchYears: 0, idleYears: 0, yearScore: 0, history: [],
     titles: { regional: 0, intl: 0, world: 0, worldCup: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
-    clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [], choice: null,
+    clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [],
     yearDone: false, stageAt: 0, endings: {},
   }
 }
@@ -37,6 +37,11 @@ export function teamRating(t: Team): number {
 }
 
 /* ———————————— 状态档（职业模式的天赋） ———————————— */
+
+/** 年龄在职业里的「体感」：晚熟的人身体晚四年报警 */
+export function proAge(p: ProState): number {
+  return p.hidden === 'late' ? p.age - 4 : p.age
+}
 
 export function formProbs(growth: number, age: number): Record<Form, number> {
   const pen = age >= PRO_DECLINE_AGE ? (age - PRO_DECLINE_AGE + 1) * 3 + (age >= 28 ? (age - 27) * 3 : 0) : 0
@@ -58,12 +63,13 @@ function rollForm(growth: number, age: number): Form {
 /* ———————————— 生涯开始 / 结束 ———————————— */
 
 /** 试训通过 → 开始生涯。年龄与天赋从天梯人生带入 */
-export function startCareer(meta: MetaSave, age: number, talent: TalentTier) {
+export function startCareer(meta: MetaSave, age: number, talent: TalentTier, hidden: HiddenTalent | null = null) {
   const p = meta.pro
   const keep = { runs: p.runs + 1, growth: p.growth, lifetimeBan: p.lifetimeBan, endings: p.endings }
   Object.assign(p, freshPro(), keep)
   p.age = age
-  p.talentBonus = TALENT_PRO_BONUS[talent]
+  p.hidden = hidden
+  p.talentBonus = TALENT_PRO_BONUS[talent] + (hidden ? HIDDEN_INFO[hidden].proBonus : 0)
   p.fame = meta.fans
   p.active = true
   for (const k of Object.keys(teamMods)) delete teamMods[k]
@@ -76,27 +82,37 @@ export function startCareer(meta: MetaSave, age: number, talent: TalentTier) {
 type Tick = 'step'
 let gen: Generator<Tick, void, void> | null = null
 
-/** 开始（或刷新后重打）本年 */
-export function beginYear(meta: MetaSave) {
+/** 开始一段连续滚动：从当前年一路滚到退役（刷新后从最近写档的那一年重来） */
+export function beginCareerRun(meta: MetaSave) {
   const p = meta.pro
   p.log = []
   p.highlights = []
-  p.choice = null
   p.yearDone = false
   p.stageAt = 0
-  gen = yearGen(meta)
+  gen = careerGen(meta)
 }
 
-export function yearInProgress(): boolean {
+export function careerInProgress(): boolean {
   return gen !== null
 }
 
-/** 推进一步。返回 'step'（继续）/ 'done'（本年结束或生涯结束）。全自动，没有抉择。 */
+/** 推进一步。返回 'step'（继续）/ 'done'（生涯结束）。全自动，没有抉择。 */
 export function proStep(): Tick | 'done' {
   if (!gen) return 'done'
   const r = gen.next()
   if (r.done) { gen = null; return 'done' }
   return r.value
+}
+
+function* careerGen(meta: MetaSave): Generator<Tick, void, void> {
+  const p = meta.pro
+  while (p.active) {
+    yield* yearGen(meta)
+    if (p.ending || !p.active) return
+    commitYear(meta)
+    L(meta, 'sys', '— 休赛期 —')
+    yield 'step'
+  }
 }
 
 /* ———————————— 工具 ———————————— */
@@ -300,7 +316,7 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
   const p = meta.pro
   p.yearScore = 0
   // 年初：摇状态
-  p.form = rollForm(p.growth + p.talentBonus, p.age)
+  p.form = rollForm(p.growth + p.talentBonus, proAge(p))
   p.skill = irand(FORM_INFO[p.form].min, FORM_INFO[p.form].max)
   L(meta, 'talent', `【第 ${p.year + 1} 年 · ${p.age} 岁】本年状态【${FORM_INFO[p.form].name}】`)
   H(meta, { cls: 'talent', text: `状态【${FORM_INFO[p.form].name}】` })
@@ -361,6 +377,15 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
   const out: EventOut = { skip: false, temp: 0, bench: false }
   const r = rand()
   const push = (cls: string, text: string, hl = false) => { const l = L(meta, cls, text); if (hl) H(meta, l) }
+
+  // 玻璃手：手腕随时可能罢工
+  if (p.hidden === 'glass' && rand() < 0.08) {
+    push('warn', '【手腕】训练赛打到第三张图，右手又开始麻。队医给你缠了绷带，这个 Stage 看台见。', true)
+    out.bench = true
+    p.benchYears++
+    yield 'step'
+    return out
+  }
 
   if (r < 0.06) {
     // 假赛邀约：缺钱的人更容易点头
@@ -474,6 +499,35 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     return out
   }
   if (r < 0.47) { const c = irand(5, 20) * 1000; meta.cash += c; p.income += c; push('career', `【赞助】外设品牌个人代言到账 +${fm(c)}。`); yield 'step'; return out }
+  // —— 梗：多数只是文案，少数动一点人气 / 手感 ——
+  if (r < 0.78) {
+    const fans = (n: number) => { addFame(meta, n); return `人气 +${fm(n)}。` }
+    const memes: Array<() => void> = [
+      () => push('career', `【切片】解说在直播里喊「他不是人，他是神！」切片播放量破百万。${fans(irand(3000, 9000))}`, true),
+      () => push('career', `【表情包】你赛后采访皱眉的一帧被做成了表情包，群里都在用。${fans(irand(1500, 4000))}`),
+      () => push('sys', `【热搜】你的 ID 上了热搜第 38 位，评论区第一条：「这谁？」${fans(irand(500, 1500))}`),
+      () => { out.temp = -3; push('warn', `【三英雄选手】解说说你是「三英雄选手」，对面 ban 位从此固定。`) },
+      () => push('warn', `【网吧队】训练赛输给了网吧队。教练把训练室的灯关了半小时，没人说话。`),
+      () => { const c = irand(3, 12) * 1000; meta.cash += c; p.income += c; push('career', `【带货】休赛期直播带货，卖出 ${irand(30, 400)} 包螺蛳粉。现金 +${fm(c)}。`) },
+      () => push('sys', `【发布会】战队发布会 PPT 把你的 ID 打错了一个字母。官博删了三次。`),
+      () => { out.temp = -4; push('warn', `【拉肚子】决赛日拉肚子。暂停时间你跑了两趟洗手间，回来对面已经换阵了。`) },
+      () => { out.temp = -2; push('warn', `【鼠标】上场前鼠标微动双击，你借了解说的鼠标。DPI 不对，打完才发现。`) },
+      () => push('career', `【握手】赛后握手，对面 ${mate()} 没伸手。第二天热搜上骂的是他。${fans(irand(1000, 3000))}`),
+      () => { out.temp = 3; push('career', `【推特】对面外援在推特 @ 你：「easy」。这个 Stage 你每一把都在找他。`) },
+      () => push('sys', `【天才少年】一个退役老将在直播里叫你「天才少年」。你 ${p.age} 岁了。`),
+      () => push('sys', `【热身】赛前热身 200 发全中。教练：「别浪费在热身上。」`),
+      () => push('career', `【接机】粉丝接机，灯牌把你的 ID 拼错了。你和灯牌合了影。${fans(irand(300, 900))}`),
+      () => push('career', `【猴子】你的猴子跳大砸空，解说：「他在测量场地。」切片火了。${fans(irand(2000, 6000))}`, true),
+      () => push('sys', `【道歉】输了之后官博让全队发道歉微博。你复制粘贴了队长的，连错别字一起。`),
+      () => { out.temp = -4; push('warn', `【ban 位】你的本命被 ban 了一整个 Stage。教练：「换手，你不是三英雄选手吗。」`) },
+      () => push('sys', `【电竞椅】战队给每人配了新电竞椅。你打了两天，腰更疼了。`),
+      () => push('career', `【拆家】决胜图最后一波你一个人守住点，对面五个人在你面前走了个来回。解说：「这是地形杀。」${fans(irand(1500, 4000))}`, true),
+      () => push('sys', `【采访】赛后采访问你怎么看对手。你说：「他们也很努力。」被做成了鬼畜。`),
+    ]
+    memes[irand(0, memes.length - 1)]()
+    yield 'step'
+    return out
+  }
   return out
 }
 
@@ -612,7 +666,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     H(meta, il)
     yield 'step'
     // FMVP：世界总决赛冠军且状态在线以上才有资格摇
-    if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0)) {
+    if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0) * (p.hidden === 'clutch' ? 2 : 1)) {
       p.titles.fmvp++
       addFame(meta, 150000)
       const fl = L(meta, 'ending', '【FMVP】颁奖台的灯打在你一个人身上。')
@@ -657,7 +711,7 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
   p.age++
   // 年龄：强制收官 / 身体报警
   if (p.age >= PRO_FORCE_RETIRE_AGE) { L(meta, 'sys', `${p.age} 岁。没有转会窗了。`); yield 'step'; endCareer(meta, 'retire'); return }
-  if (p.age >= PRO_DECLINE_AGE && rand() < 0.12 * (p.age - PRO_DECLINE_AGE + 1)) {
+  if (proAge(p) >= PRO_DECLINE_AGE && rand() < 0.12 * (proAge(p) - PRO_DECLINE_AGE + 1)) {
     L(meta, 'warn', `${p.age} 岁，手速和反应都在告诉你：到时候了。`)
     yield 'step'
     endCareer(meta, 'retire')
@@ -710,7 +764,7 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
 }
 
 /** 年终写档 */
-export function commitYear(meta: MetaSave) {
+function commitYear(meta: MetaSave) {
   const p = meta.pro
   p.year++
   p.yearDone = false

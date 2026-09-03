@@ -1,13 +1,14 @@
 /**
- * 一段人生。一季一步：生活消耗热情 → 实力成长 → 段位墙检定 → 段位跟随 → 事件 → 抉择 / 被发掘。
- * 被发掘后职业阶段接在同一条时间线上继续滚（pro.ts 全自动）。
- * 生成器驱动，UI 每 tick 调一次 lifeStep；遇到抉择停下等 lifeChoose。
+ * 一段人生。一季一步：生活消耗热情 → 实力成长 → 段位墙检定 → 段位跟随 → 事件 → 死线 / 被发掘。
+ * 全程没有抉择，一辈子纯靠 roll。被发掘则天梯到此为止，职业生涯在 pro.ts 单开一页滚。
+ * 生成器驱动，UI 每 tick 调一次 lifeStep。
  * 局内不写档；结束才 commit。刷新 = 这辈子重来。
  */
 import type { Growth, LifeState, LogLine, MajorTier, MetaSave } from '../types'
 import {
   ACH_PERKS, AGE_DECAY_PER_SEASON, BOOSTER_QUOTE, BOOST_LANDED_CASH, BOOST_SUSPEND_P, CHEAT_CATCH_MAX,
-  CHEAT_CATCH_P, CREW_BONUS, DEFAULT_SPEED, EXP_BY_MAJOR, EXP_PRO, MAJOR_NAME,
+  CHEAT_CATCH_P, CREW_BONUS, DEFAULT_SPEED, EXP_BY_MAJOR, EXP_PRO, GLASS_INJURY_MULT, GLASS_INJURY_P, GLASS_INJURY_PASSION,
+  HIDDEN_INFO, LATE_PASSION_START, LATE_PASSION_YEAR, LATE_QUIT_AGE, LATE_SCOUT_MAX_AGE, MAJOR_NAME,
   MARKET_BOOST_PASS, MARKET_CHEAT_PASS, MOMENTUM_PER_PCT, NEW_YEAR_PASSION, PASSION_START,
   PASSION_WARN_MULT, PERSONAS, QUIT_AGE, SCOUT_MAX_AGE, SCOUT_P, SEASONS_PER_YEAR, SLOPE_DECAY, STAGE_INFO, START_AGE,
   SWITCH_POOL_MULT, TALENT_INFO, TALENT_ORDER, TOP_MIN_GAMES, TRIAL_BASE,
@@ -17,7 +18,18 @@ import { clamp, gauss, irand, majorFloor, majorOf, rand, rankScore, scoreToRank 
 import { COMMON_EVENTS, DIRTY_EVENTS, EGG_EVENTS, LIFE_EVENTS, pickEvent } from '../data/events'
 import { unlock } from './ach'
 import { ACHIEVEMENTS } from '../data/achievements'
-import { addExp, rollTalent, talentShift } from '../data/talent'
+import { addExp, rollHidden, rollTalent, talentShift } from '../data/talent'
+
+/** 隐藏天赋对这辈子的几个开关 */
+function quitAge(g: LifeState) { return g.hidden === 'late' ? LATE_QUIT_AGE : QUIT_AGE }
+function scoutMaxAge(g: LifeState) { return g.hidden === 'late' ? LATE_SCOUT_MAX_AGE : SCOUT_MAX_AGE }
+/** 晚熟的年龄曲线：二十四岁前慢，之后反而涨 */
+function lifeAgeMult(g: LifeState): number {
+  if (g.hidden !== 'late') return ageMult(g.age)
+  if (g.age <= 24) return 0.75
+  if (g.age <= 33) return 1.2
+  return 0.6
+}
 import { freshPro, startCareer } from './pro'
 import { buildLifeEnding, type LifeEndReason } from '../data/endings'
 
@@ -63,8 +75,6 @@ export function loadMeta(): MetaSave {
       m.pro.titles = { ...fresh.pro.titles, ...(m.pro.titles ?? {}) }
       m.pro.log = []
       m.pro.highlights = []
-      m.pro.choice = null
-      m.pro.active = false
       m.talentLog = { ...fresh.talentLog, ...m.talentLog }
       m.dirty = { ...fresh.dirty, ...m.dirty }
       m.reached = m.reached ?? {}
@@ -121,9 +131,14 @@ export function createLife(meta: MetaSave): LifeState {
   const rich = pk.has('rich') && rand() < 0.3
   let passion = irand(PASSION_START[0], PASSION_START[1]) + (rich ? 150 : 0) + (pk.has('passion') ? 100 : 0)
   const ti = TALENT_INFO[talent.tier]
+  const hidden = meta.debugHidden ?? rollHidden(meta.growth.level)
+  meta.debugHidden = undefined
+  if (hidden === 'late') passion += LATE_PASSION_START
   const g: LifeState = {
     persona,
     talent: talent.tier,
+    hidden,
+    injured: false,
     mmr: talent.mmr,
     rank: scoreToRank(talent.mmr * 0.85),
     momentum: 0,
@@ -161,7 +176,6 @@ export function createLife(meta: MetaSave): LifeState {
     choiceUsed: {},
     logs: [],
     highlights: [],
-    choice: null,
     achieved: { ...meta.achievements },
     newAchievements: [],
     over: false,
@@ -173,32 +187,32 @@ export function createLife(meta: MetaSave): LifeState {
   if (talent.tier === 'genius') unlock(g, 'talent_genius')
   if (talent.tier === 'monster') unlock(g, 'talent_monster')
   if (rich) unlock(g, 'born_rich')
+  if (hidden) {
+    const hi = HIDDEN_INFO[hidden]
+    g.logs.push({ cls: 'hidden', text: `【隐藏天赋】${hi.name}。${hi.line}` })
+    g.highlights.push({ cls: 'hidden', text: `隐藏天赋【${hi.name}】` })
+    unlock(g, `hidden_${hidden}`)
+  }
   return g
 }
 
 /* ———————————— 生成器驱动 ———————————— */
 
-type Tick = 'step' | 'choice'
+type Tick = 'step'
 let gen: Generator<Tick, void, void> | null = null
-let answer: string | null = null
 const usedEvents = new Set<string>()
 
 export function beginLife(meta: MetaSave, g: LifeState) {
-  answer = null
   usedEvents.clear()
   gen = lifeGen(meta, g)
 }
 
+/** 推进一步。没有任何抉择：一辈子全靠 roll。 */
 export function lifeStep(): Tick | 'done' {
   if (!gen) return 'done'
   const r = gen.next()
   if (r.done) { gen = null; return 'done' }
   return r.value
-}
-
-export function lifeChoose(g: LifeState, optionId: string) {
-  g.choice = null
-  answer = optionId
 }
 
 /* ———————————— 工具 ———————————— */
@@ -219,8 +233,9 @@ function wallOf(mmr: number): { score: number; into: MajorTier } | null {
 
 function breakChance(g: LifeState, into: MajorTier): number {
   const base = WALL_BASE[into] ?? 0.5
-  const p = base + g.momentum / (MOMENTUM_PER_PCT * 100) + TALENT_INFO[g.talent].breakBonus + (g.crewSeasons > 0 ? CREW_BONUS : 0)
-  return clamp(p, 0.03, 0.95)
+  const hid = g.hidden === 'clutch' ? 0.3 : g.hidden === 'aim' || g.hidden === 'glass' ? 0.05 : 0
+  const p = base + g.momentum / (MOMENTUM_PER_PCT * 100) + TALENT_INFO[g.talent].breakBonus + (g.crewSeasons > 0 ? CREW_BONUS : 0) + hid
+  return clamp(p, 0.03, 0.97)
 }
 
 function passionAdd(g: LifeState, d: number) {
@@ -294,7 +309,7 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
       unlock(g, g.rich ? 'stage_free' : 'stage_worker')
       yield 'step'
     }
-    if (g.age >= QUIT_AGE) {
+    if (g.age >= quitAge(g)) {
       L(g, 'sys', `${g.age} 岁。你把游戏留在硬盘里，很久没点开。`)
       yield 'step'
       endLife(g, 'age')
@@ -305,8 +320,9 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
       const before = rankScore(g.rank)
       const target = clamp(g.mmr + g.fakeBoost, 0, wallCap(g))
       g.rank = scoreToRank(before + (target - before) * 0.7)
-      passionAdd(g, NEW_YEAR_PASSION)
-      L(g, 'sys', `【${g.age} 岁】新的一年。软重置，重新定级。热情 +${NEW_YEAR_PASSION}。`)
+      const ny = NEW_YEAR_PASSION + (g.hidden === 'late' ? LATE_PASSION_YEAR : 0)
+      passionAdd(g, ny)
+      L(g, 'sys', `【${g.age} 岁】新的一年。软重置，重新定级。热情 +${ny}。${g.hidden === 'late' && g.age >= 24 ? '不知道为什么，还是想打。' : ''}`)
       yield 'step'
     }
   }
@@ -337,8 +353,11 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
   const polMult = g.pollution > 30 ? 0.95 : 1
   const gamesMult = Math.sqrt(Math.max(1, games) / 100)
   const spurt = g.spurtSeasons > 0 ? SWITCH_POOL_MULT : 1
-  let delta = ti.slope * SLOPE_DECAY[majorOf(g.mmr)] * ageMult(g.age) * info.slope * gamesMult * polMult * spurt + gauss(ti.sigma)
-  if (g.age > 30) delta -= AGE_DECAY_PER_SEASON
+  // 隐藏天赋：神枪稳且快；玻璃手快但脆；晚熟走另一条年龄曲线
+  const hidSlope = g.hidden === 'aim' ? 1.3 : g.hidden === 'glass' ? (g.injured ? GLASS_INJURY_MULT : 1.45) : 1
+  const hidSigma = g.hidden === 'aim' ? 0.35 : g.hidden === 'glass' ? 1.2 : 1
+  let delta = ti.slope * SLOPE_DECAY[majorOf(g.mmr)] * lifeAgeMult(g) * info.slope * gamesMult * polMult * spurt * hidSlope + gauss(ti.sigma * hidSigma)
+  if (g.age > (g.hidden === 'late' ? 34 : 30)) delta -= AGE_DECAY_PER_SEASON
   if (games < 20) delta = Math.min(delta, 0)
   if (g.spurtSeasons > 0) g.spurtSeasons--
   const before = rankScore(g.rank)
@@ -414,6 +433,25 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
     yield 'step'
   }
 
+  // 5.5 隐藏天赋的账
+  if (g.hidden === 'glass' && !g.injured && g.age >= 19 && rand() < GLASS_INJURY_P) {
+    g.injured = true
+    passionAdd(g, -GLASS_INJURY_PASSION)
+    const l = L(g, 'ban', `【手腕】一把打到一半，右手忽然握不住鼠标。医生说腱鞘囊肿，别再这样打了。热情 −${GLASS_INJURY_PASSION}。`)
+    H(g, l)
+    unlock(g, 'glass_broken')
+    yield 'step'
+  }
+  if (g.hidden === 'aim' && !g.tally.verified && majorIndex(g.rank.major) >= majorIndex('master')) {
+    g.tally.verified = 1
+    const n = irand(40, 120)
+    g.fans += n * 30
+    const l = L(g, 'win', `【复核】一季被举报 ${n} 次，官方人工看了你 20 局录像。回复只有一行：「该玩家未使用第三方程序。」截图在论坛转了三天。人气 +${n * 30}。`)
+    H(g, l)
+    unlock(g, 'verified')
+    yield 'step'
+  }
+
   // 6. 事件
   const n = rand() < 0.25 ? 0 : rand() < 0.7 ? 1 : 2
   for (let i = 0; i < n; i++) {
@@ -433,7 +471,7 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
   if (g.boostEarned >= BOOST_LANDED_CASH) { endLife(g, 'landed'); return }
 
   // 8. 被发掘：开挂 / 被职业圈拉黑的人，没人私信
-  if (!g.scouted && g.age <= SCOUT_MAX_AGE && !g.banned && g.dirty.cheatSeasons === 0 && meta.proBlockLives <= 0) {
+  if (!g.scouted && g.age <= scoutMaxAge(g) && !g.banned && g.dirty.cheatSeasons === 0 && meta.proBlockLives <= 0) {
     const pr = SCOUT_P[g.rank.major]
     const mult = perks(meta).has('scout') ? 1.5 : 1
     if (pr && rand() < pr * mult + Math.min(0.1, g.fans / 100000)) {
@@ -466,26 +504,27 @@ function wallCap(g: LifeState): number {
   return w ? w.score - 1 : 4600
 }
 
-/* ———————————— 死线抉择 ———————————— */
+/* ———————————— 死线：不弹窗，纯 roll ———————————— */
 
+/**
+ * 热情不够下一季又卡着墙，人会做什么？环境脏（污染高）越容易走歪，
+ * 有钱的更容易请人，没钱的只能硬肝或者删游戏。
+ */
 function* deadline(g: LifeState, into: MajorTier): Generator<Tick, void, void> {
   const q = BOOSTER_QUOTE.find((b) => majorIndex(g.rank.major) <= majorIndex(b.maxMajor)) ?? BOOSTER_QUOTE[BOOSTER_QUOTE.length - 1]
-  g.choice = {
-    id: 'deadline',
-    title: '再打一季，可能就不想打了',
-    body: `热情只剩 ${g.passion}，卡在${MAJOR_NAME[into]}门口。私信里那条代练广告还在。`,
-    options: [
-      { id: 'grind', label: '硬肝最后一季', cls: 'primary', sub: `突破概率 ${Math.round(breakChance(g, into) * 100)}%` },
-      { id: 'boost', label: `${q.name}带过去`, cls: 'warn', sub: `${q.price} 一把 · 过墙 ${Math.round(MARKET_BOOST_PASS * 100)}% · 留下举报记录，职业背调能翻到` },
-      { id: 'cheat', label: '开挂', cls: 'danger', sub: `免费 · 过墙 ${Math.round(MARKET_CHEAT_PASS * 100)}% · 迟早永封，成就不再计入` },
-      { id: 'quit', label: '就此退坑' },
-    ],
-  }
-  yield 'choice'
-  const a = answer ?? 'grind'
-  answer = null
+  const canPay = g.cash >= q.price * 20
+  const pol = Math.min(0.15, g.pollution / 200)
+  const wBoost = canPay ? 0.18 + pol + (g.rich ? 0.1 : 0) : 0
+  const wCheat = 0.04 + pol
+  const wQuit = 0.12 + (g.stuckSeasons >= 3 ? 0.08 : 0)
+  const wGrind = Math.max(0.2, 1 - wBoost - wCheat - wQuit)
+  const total = wGrind + wBoost + wCheat + wQuit
+  let r = rand() * total
+  const a = (r -= wGrind) < 0 ? 'grind' : (r -= wBoost) < 0 ? 'boost' : (r -= wCheat) < 0 ? 'cheat' : 'quit'
+  L(g, 'warn', `【死线】热情只剩 ${g.passion}，卡在${MAJOR_NAME[into]}门口。私信里那条代练广告还在。`)
+  yield 'step'
   if (a === 'quit') { L(g, 'sys', '你想了想，把游戏删了。'); yield 'step'; endLife(g, 'quit'); return }
-  if (a === 'grind') { L(g, 'sys', '你决定自己打。'); yield 'step'; return }
+  if (a === 'grind') { L(g, 'sys', `你把广告删了，决定自己打。突破概率 ${Math.round(breakChance(g, into) * 100)}%。`); yield 'step'; return }
   const cheat = a === 'cheat'
   g.usedMarket = true
   if (cheat) {
@@ -537,6 +576,7 @@ function* scouting(g: LifeState): Generator<Tick, void, void> {
     g.scouted = true
     g.scoutedAt = { age: g.age, rank: { ...g.rank } }
     unlock(g, 'scouted')
+    if (g.age >= 24) unlock(g, 'late_scout')
     g.over = true
     yield 'step'
   } else {
@@ -581,7 +621,7 @@ export function commitLife(g: LifeState, meta: MetaSave): { toPro: boolean; exp:
     meta.fans = g.fans
     meta.dirty = { ...g.dirty }
     meta.cashLow = Math.min(0, g.cash)
-    startCareer(meta, g.age, g.talent)
+    startCareer(meta, g.age, g.talent, g.hidden)
     if (perks(meta).has('pro')) meta.pro.talentBonus += 3
   }
   return { toPro: g.scouted, exp, ups }

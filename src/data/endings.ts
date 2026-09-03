@@ -1,5 +1,5 @@
 import type { LifeState, MajorTier, MetaSave, SeasonEnding } from '../types'
-import { MAJOR_NAME, TEAMS, isAtMajorGate, nextMajor, rankLabel } from './constants'
+import { MAJOR_NAME, TEAMS, isAtMajorGate, majorIndex, nextMajor, rankLabel } from './constants'
 import { scoreToRank } from '../sim/rank'
 
 /* ———————————— 云泥之隔 ———————————— */
@@ -129,6 +129,9 @@ export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEndi
     const cm = buildCloudMudEnding(g.rank.major, g.age)
     if (cm) return { ...cm, verse: [...cm.verse, story] }
   }
+  // 隐藏结局：只有带隐藏天赋、又走到了那一步的人才会看到
+  const hid = buildHiddenEnding(g, label, bio, story)
+  if (hid) return hid
   const [title, line] = PEAK_TITLE[peak.major]
   const gapLine = g.peakMmr - g.peakScore > 300
     ? `系统一直欠你分：真实峰值 ${rankLabel(real)}，段位从没追上过。`
@@ -142,6 +145,59 @@ export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEndi
     id: `quit_${peak.major}`, title, rankLabel: label,
     verse: [line, bio + how, story, gapLine, eulogy].filter(Boolean),
   }
+}
+
+/* ———————————— 隐藏结局（天梯） ———————————— */
+
+function buildHiddenEnding(g: LifeState, label: string, bio: string, story: string): SeasonEnding | null {
+  if (!g.hidden) return null
+  const peak = scoreToRank(g.peakScore)
+  const pi = majorIndex(peak.major)
+  if (g.hidden === 'aim' && pi >= majorIndex('champ') && !g.scouted) {
+    return {
+      id: 'aimbot', title: '人形自走挂', rankLabel: label,
+      verse: [
+        '你退坑那天，论坛还有人在发你的录像问「这真没开？」。官方复核过，没开。',
+        bio + '没有任何一支战队私信过你——他们也觉得你开了。',
+        story,
+        '几年后有人在网吧认出你的 ID。他说：「我当年举报过你。」你说：「谢谢。」',
+      ],
+    }
+  }
+  if (g.hidden === 'clutch' && g.stuckTotal === 0 && pi >= majorIndex('master')) {
+    return {
+      id: 'unstuck', title: '从没卡过', rankLabel: label,
+      verse: [
+        '别人卡墙卡出心理阴影，你一辈子没在任何一道门口停过一季。',
+        bio + '每一次「差一口气」，你都刚好有那口气。',
+        story,
+        '你不理解为什么有人说这游戏有墙。',
+      ],
+    }
+  }
+  if (g.hidden === 'late' && g.age >= 30 && pi >= majorIndex('gm')) {
+    return {
+      id: 'latebloom', title: '越老越妖', rankLabel: label,
+      verse: [
+        `三十岁那年你还在涨分。一起打过的人早就退坑、结婚、生小孩了。`,
+        bio + `峰值 ${rankLabel(peak)}，是在别人都说「这年纪该收手了」之后打到的。`,
+        story,
+        '你的直播间标题一直没改：「叔叔还能打」。',
+      ],
+    }
+  }
+  if (g.hidden === 'glass' && g.injured && majorIndex(scoreToRank(g.peakMmr).major) >= majorIndex('master')) {
+    return {
+      id: 'glasshand', title: '伤仲永', rankLabel: label,
+      verse: [
+        '受伤前那几季，认识你的人都说你是他们见过最有天赋的。',
+        bio + '手腕废了之后，你又打了很久，分再没回到过去。',
+        story,
+        '你现在偶尔还会打开录像，看受伤前那个人的操作。你不确定那还是不是你。',
+      ],
+    }
+  }
+  return null
 }
 
 /* ———————————— 职业结局 ———————————— */

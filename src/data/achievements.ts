@@ -58,6 +58,18 @@ export const ACHIEVEMENTS: Achievement[] = [
   // —— 结局 ——
   { id: 'end_quit', name: '退坑', desc: '一段天梯人生打完' },
   { id: 'scouted', name: '有人找你', desc: '试训通过，进入职业' },
+  // —— 隐藏天赋（解锁前只显示「？」） ——
+  { id: 'hidden_aim', name: '天生神枪', desc: '摇到隐藏天赋「天生神枪」', secret: true },
+  { id: 'hidden_clutch', name: '大心脏', desc: '摇到隐藏天赋「大心脏」', secret: true },
+  { id: 'hidden_late', name: '晚熟', desc: '摇到隐藏天赋「晚熟」', secret: true },
+  { id: 'hidden_glass', name: '玻璃手', desc: '摇到隐藏天赋「玻璃手」', secret: true },
+  { id: 'verified', name: '官方验证', desc: '被举报太多，官方人工复核：没开', secret: true },
+  { id: 'glass_broken', name: '手腕', desc: '手感最好的时候，手腕先走了', secret: true },
+  { id: 'late_scout', name: '大龄新人', desc: '24 岁以后才进职业', secret: true },
+  { id: 'end_aimbot', name: '人形自走挂', desc: '隐藏结局', secret: true },
+  { id: 'end_unstuck', name: '从没卡过', desc: '隐藏结局', secret: true },
+  { id: 'end_latebloom', name: '越老越妖', desc: '隐藏结局', secret: true },
+  { id: 'end_glasshand', name: '伤仲永', desc: '隐藏结局', secret: true },
   // —— 职业模式（荣誉，金框；解锁前不显示描述） ——
   { id: 'pro_signed', name: '签约', desc: '第一份职业合同', honor: true },
   { id: 'pro_partner', name: '合作战队', desc: '效力 OWCS 合作战队', honor: true },

@@ -1,8 +1,20 @@
-import type { Growth, TalentTier } from '../types'
+import type { Growth, HiddenTalent, TalentTier } from '../types'
 import {
+  HIDDEN_INFO, HIDDEN_LEVEL_CAP, HIDDEN_ORDER, HIDDEN_PER_LEVEL,
   LEVEL_EXP_BASE, LEVEL_EXP_STEP, TALENT_INFO, TALENT_ORDER, TALENT_SHIFT_CAP, TALENT_SHIFT_GENIUS, TALENT_SHIFT_PER,
 } from './constants'
 import { irand, rand } from '../sim/rank'
+
+/** 隐藏天赋：合计约 3%，每级再加一点点；摇不到就是 null */
+export function rollHidden(level: number): HiddenTalent | null {
+  const extra = Math.min(HIDDEN_LEVEL_CAP, level * HIDDEN_PER_LEVEL) / HIDDEN_ORDER.length
+  let r = rand() * 100
+  for (const h of HIDDEN_ORDER) {
+    r -= HIDDEN_INFO[h].p + extra
+    if (r < 0) return h
+  }
+  return null
+}
 
 /** 升到下一级需要的经验（线性递增） */
 export function levelNeed(level: number): number {
