@@ -1,11 +1,11 @@
 /**
- * 职业模式：单开的一段生涯。以「年」为一局：年初摇状态 → 三个 Stage 逐场滚动 → 年末转会窗（玩家选）。
- * 用生成器驱动，UI 每 tick 调一次 proStep；遇到抉择就停下等 proChoose。
- * 年内不写档；一年结束（yearDone）或生涯结束才写。刷新页面 = 这一年重打。
+ * 职业阶段：从天梯人生被发掘后接上。以「年」为单位：年初摇状态 → 三个 Stage 逐场滚动 → 年末转会窗（自动挑）。
+ * 全程滚屏，没有抉择；转会 / 板凳 / 假赛 / 宫斗 / 解散全是随机事件。
+ * 由 life.ts 驱动：beginYear → proStep 直到 'done' → commitYear；生涯结束写 ending。
  */
-import type { Form, LogLine, MetaSave, ProChoice, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
+import type { Form, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
+  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
   PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE,
   SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
@@ -72,9 +72,8 @@ export function startCareer(meta: MetaSave, age: number, talent: TalentTier) {
 
 /* ———————————— 生成器驱动 ———————————— */
 
-type Tick = 'step' | 'choice'
+type Tick = 'step'
 let gen: Generator<Tick, void, void> | null = null
-let answer: string | null = null
 
 /** 开始（或刷新后重打）本年 */
 export function beginYear(meta: MetaSave) {
@@ -84,7 +83,6 @@ export function beginYear(meta: MetaSave) {
   p.choice = null
   p.yearDone = false
   p.stageAt = 0
-  answer = null
   gen = yearGen(meta)
 }
 
@@ -92,18 +90,12 @@ export function yearInProgress(): boolean {
   return gen !== null
 }
 
-/** 推进一步。返回 'step'（继续）/ 'choice'（等玩家）/ 'done'（本年结束或生涯结束） */
+/** 推进一步。返回 'step'（继续）/ 'done'（本年结束或生涯结束）。全自动，没有抉择。 */
 export function proStep(): Tick | 'done' {
   if (!gen) return 'done'
   const r = gen.next()
   if (r.done) { gen = null; return 'done' }
   return r.value
-}
-
-/** 玩家做了选择，继续 */
-export function proChoose(meta: MetaSave, optionId: string) {
-  meta.pro.choice = null
-  answer = optionId
 }
 
 /* ———————————— 工具 ———————————— */
@@ -141,7 +133,7 @@ function addFame(meta: MetaSave, n: number) {
 /** 黑历史曝光概率（天梯里做的脏事 + 本生涯假赛） */
 export function exposureP(meta: MetaSave): number {
   const d = meta.dirty
-  return Math.min(0.5, d.boostJobs * 0.03 + d.hires * 0.008 + d.cheatSeasons * 0.08 + meta.pro.fixes * 0.12)
+  return Math.min(0.5, d.boostJobs * 0.05 + d.hires * 0.04 + d.cheatSeasons * 0.2 + meta.pro.fixes * 0.12)
 }
 
 function endCareer(meta: MetaSave, reason: ProEndReason) {
@@ -165,13 +157,42 @@ function lifetimeBan(meta: MetaSave, why: string) {
   endCareer(meta, 'lifetime_ban')
 }
 
+/**
+ * 政审 / 被爆。返回 true 表示生涯到此结束。
+ * 假赛、开挂 → 永封；代练 / 陪玩史 → 禁赛 + 解约 + 下几辈子没人私信你。
+ */
 function exposureCheck(meta: MetaSave, when: string, mult = 1): boolean {
   const pr = exposureP(meta) * mult
   if (pr <= 0 || rand() >= pr) return false
+  const p = meta.pro
   const d = meta.dirty
-  const what = meta.pro.fixes > 0 && rand() < 0.5 ? '该选手涉嫌操纵比赛' : d.cheatSeasons > 0 && rand() < 0.5 ? '该选手账号曾使用第三方程序' : d.boostJobs > 0 && rand() < 0.6 ? '该选手曾长期从事有偿代练' : '该选手账号存在共享（代练 / 陪玩）记录'
-  lifetimeBan(meta, `${when}查实：${what}。`)
-  return true
+  const severe = p.fixes > 0 || d.cheatSeasons > 0
+  if (severe) {
+    const what = p.fixes > 0 && (d.cheatSeasons === 0 || rand() < 0.5) ? '该选手涉嫌操纵比赛' : '该选手账号曾使用第三方程序'
+    lifetimeBan(meta, `${when}查实：${what}。`)
+    return true
+  }
+  const who = [
+    '经理翻账号登录记录时发现两个省同时在线',
+    '一个被踢出首发的队友把你的代练截图发进了赛区群',
+    '老粉扒出你当年直播里说过的「号给朋友打了」',
+    '一个路人在论坛贴出和你 ID 对局时的战绩截图',
+  ][irand(0, 3)]
+  const t = teamOf(p.teamId)
+  p.suspended += EXPOSED_SUSPEND
+  p.clean = false
+  addFame(meta, -Math.round(p.fame * 0.4))
+  L(meta, 'ban', `【被爆】${who}。${when}认定账号存在共享（代练 / 陪玩）记录：禁赛 ${EXPOSED_SUSPEND} 个 Stage。${t ? `${t.name} 当天解约。` : ''}`)
+  H(meta, { cls: 'ban', text: '代练史被爆，禁赛解约' })
+  ach(meta, 'pro_exposed')
+  if (t) deadTeams.add(t.id)
+  p.teamId = null
+  p.salary = 0
+  meta.proBlockLives = EXPOSED_BLOCK_LIVES
+  // 爆过一次就没什么可爆的了
+  d.hires = 0
+  d.boostJobs = 0
+  return false
 }
 
 function teamStrength(meta: MetaSave, temp = 0): number {
@@ -227,46 +248,44 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
   return out.slice(0, 3)
 }
 
-function offerChoice(meta: MetaSave, offers: ProOffer[], window: boolean): ProChoice {
-  const p = meta.pro
-  const cur = teamOf(p.teamId)
-  const options = offers.map((o) => {
+/**
+ * 自动选合同：不让玩家点。首发 > 替补，钱多 > 钱少，合作战队加分；
+ * 但选手也是人：偶尔为了钱去坐板凳，偶尔为了上场去小队。
+ */
+function pickOffer(meta: MetaSave, offers: ProOffer[]): ProOffer | null {
+  if (!offers.length) return null
+  const cur = meta.pro.teamId
+  const score = (o: ProOffer) => {
     const t = teamOf(o.teamId)!
-    const isCur = cur && t.id === cur.id
-    return {
-      id: `sign:${t.id}:${o.salary}:${o.role}`,
-      label: `${isCur ? '续约 ' : ''}${t.name} · 年薪 ${fm(o.salary)}`,
-      sub: `${t.partner ? '合作战队 · Stage 1 免预选' : '普通队 · 从预选打起'} · ${o.role === 'bench' ? '替补' : '首发'}`,
-      cls: isCur ? 'primary' : t.partner ? 'warn' : '',
-    }
-  })
-  if (!offers.length) options.push({ id: 'idle', label: window ? '没人要。等一年再看' : '没人要。这一年先打野队', sub: `无队一年开销 ${fm(PRO_IDLE_EXPENSE)}，人气会掉`, cls: '' })
-  if (p.age >= PRO_RETIRE_MIN_AGE) options.push({ id: 'retire', label: '退役', sub: '生涯到此为止，结算结局', cls: 'danger' })
-  return {
-    id: window ? 'window' : 'sign',
-    title: window ? `转会窗 · ${p.age} 岁` : `${p.age} 岁 · 有队找你`,
-    body: window
-      ? (cur ? (offers.some((o) => o.teamId === cur.id) ? `${cur.name} 给了续约。` : `${cur.name} 没给续约。`) : '') + (offers.filter((o) => o.teamId !== cur?.id).length ? (cur ? '别的队也发了报价。' : '有队发了报价。') : '')
-      : offers.length ? '选一家签。合作战队钱多免预选，普通队从公开预选打。' : '',
-    options,
+    return o.salary / 1000 + (t.partner ? 25 : 0) + (o.role === 'starter' ? 30 : 0) + (o.teamId === cur ? 12 : 0) + irand(0, 20)
   }
+  return offers.slice().sort((a, b) => score(b) - score(a))[0]
 }
 
-function applySign(meta: MetaSave, id: string) {
+function applySign(meta: MetaSave, o: ProOffer, window = false) {
   const p = meta.pro
-  const [, teamId, salary, role] = id.split(':')
-  const t = teamOf(teamId)!
-  const wasCur = p.teamId === teamId
-  p.teamId = teamId
-  p.salary = Number(salary)
+  const t = teamOf(o.teamId)!
+  const wasCur = p.teamId === o.teamId
+  const prev = teamOf(p.teamId)
+  p.teamId = o.teamId
+  p.salary = o.salary
   meta.cash += p.salary
   p.income += p.salary
   p.idleYears = 0
-  L(meta, 'career', `【${wasCur ? '续约' : '签约'}】${t.name}，年薪 ${fm(p.salary)} 到账。${role === 'bench' ? '合同上写的是替补。' : ''}`)
-  H(meta, { cls: 'career', text: `${wasCur ? '续约' : '签约'} ${t.name}` })
+  const verb = wasCur ? '续约' : window && prev ? '转会' : '签约'
+  const flavor = wasCur
+    ? (rand() < 0.5 ? '老板说明年再冲一冲。' : '你没看合同就签了。')
+    : t.partner && prev && !prev.partner
+      ? '从小队跳到大队，群里有人说你抱团。'
+      : o.role === 'bench'
+        ? '合同上写的是替补。经理说「先适应一下」。'
+        : prev ? `${prev.name} 的队友在群里发了个「走好」。` : '你把训练室的照片发了朋友圈。'
+  L(meta, 'career', `【${verb}】${t.name}，年薪 ${fm(p.salary)}。${flavor}`)
+  H(meta, { cls: 'career', text: `${verb} ${t.name}` })
   ach(meta, 'pro_signed')
   if (t.partner) ach(meta, 'pro_partner')
-  if (role === 'bench') p.benchYears++
+  if (!wasCur && prev) ach(meta, 'pro_transfer')
+  if (o.role === 'bench') p.benchYears++
 }
 
 /* ———————————— 一年 ———————————— */
@@ -285,12 +304,8 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
   // 无队：看有没有人要
   if (!p.teamId) {
     const offers = makeOffers(meta, false)
-    p.choice = offerChoice(meta, offers, false)
-    yield 'choice'
-    const a = answer ?? 'idle'
-    answer = null
-    if (a === 'retire') { endCareer(meta, 'retire'); return }
-    if (a.startsWith('sign:')) applySign(meta, a)
+    const pick = pickOffer(meta, offers)
+    if (pick) applySign(meta, pick)
     else {
       p.idleYears++
       meta.cash -= PRO_IDLE_EXPENSE
@@ -341,21 +356,13 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
   const r = rand()
   const push = (cls: string, text: string, hl = false) => { const l = L(meta, cls, text); if (hl) H(meta, l) }
 
-  if (r < 0.07) {
-    // 假赛邀约：抉择
+  if (r < 0.06) {
+    // 假赛邀约：缺钱的人更容易点头
     const money = irand(8, 25) * 10000
-    p.choice = {
-      id: 'fix', title: '陌生人加了你',
-      body: `「这个 Stage 小组赛放两场，${fm(money)}，事成打款。」对方发来一张转账截图当定金。`,
-      options: [
-        { id: 'fix_no', label: '拒绝，截图发给队长', cls: 'primary' },
-        { id: 'fix_yes', label: `接。${fm(money)} 到账`, cls: 'danger', sub: '这个数字比年薪高' },
-      ],
-    }
-    yield 'choice'
-    const a = answer ?? 'fix_no'
-    answer = null
-    if (a === 'fix_yes') {
+    push('warn', `陌生人加了你：「这个 Stage 小组赛放两场，${fm(money)}，事成打款。」附一张转账截图当定金。`)
+    yield 'step'
+    const takeP = meta.cash < -20000 ? 0.55 : meta.cash < 0 ? 0.25 : 0.06
+    if (rand() < takeP) {
       meta.cash += money
       p.income += money
       p.fixes++
@@ -374,16 +381,54 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
       }
     } else {
       addFame(meta, 800)
-      push('career', '你把截图发给了队长。队长转发给了官方。人气 +。', true)
+      push('career', '你把截图发给了队长。队长转发给了官方。人气 +800。', true)
       ach(meta, 'pro_fix_refused')
     }
     yield 'step'
     return out
   }
-  if (r < 0.11) { push('warn', `【队内】${mate()} 和 ${mate()} 为首发位置闹到教练组，训练赛打成两派。`); out.temp = -6; yield 'step'; return out }
-  if (r < 0.15) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【转会】主力 ${mate()} 被${TEAMS[irand(0, 3)].name}挖走。`); yield 'step'; return out }
-  if (r < 0.19) { teamMods[t.id] = (teamMods[t.id] ?? 0) + 4; push('career', `【转会】战队签下韩援 ${mate()}。`); yield 'step'; return out }
+  if (r < 0.10) { push('warn', `【宫斗】${mate()} 和 ${mate()} 为首发位置闹到教练组，训练赛打成两派。你在中间。`); out.temp = -6; yield 'step'; return out }
+  if (r < 0.13) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【被挖】主力 ${mate()} 被${TEAMS[irand(0, 3)].name}挖走，队里少了个能开团的。`); yield 'step'; return out }
+  if (r < 0.16) { teamMods[t.id] = (teamMods[t.id] ?? 0) + 4; push('career', `【补强】战队签下韩援 ${mate()}。训练赛开始赢了。`); yield 'step'; return out }
+  if (r < 0.19) {
+    // 抱团：别家凑出超级队
+    const big = TEAMS[irand(0, 3)]
+    if (big.id !== t.id) { teamMods[big.id] = (teamMods[big.id] ?? 0) + 6; push('warn', `【抱团】${big.name} 一口气签了三个国家队选手。解说说这个 Stage 悬念不大。`); yield 'step'; return out }
+  }
   if (r < 0.22) {
+    // enjoy：队伍摆烂
+    push('warn', `【enjoy】老板不投钱了，队里训练赛改成每天两小时。${mate()} 直播比训练时间长。`)
+    out.temp = -8
+    yield 'step'
+    return out
+  }
+  if (r < 0.25) {
+    // 板凳
+    push('warn', `【板凳】教练换了体系，这个 Stage 你坐替补席。首发是刚签的 ${mate()}。`, true)
+    out.bench = true
+    p.benchYears++
+    yield 'step'
+    return out
+  }
+  if (r < 0.27) {
+    // 脱粉
+    addFame(meta, -Math.round(p.fame * 0.25))
+    push('warn', `【脱粉】你直播说了句「这游戏也就这样」，粉丝群一夜掉了四分之一。`)
+    yield 'step'
+    return out
+  }
+  if (r < 0.29) {
+    // 被优化
+    push('ban', `【优化】俱乐部签了新人，经理约你谈话：「合同剩下的部分我们照付。」你被挂上了转会名单。`, true)
+    p.teamId = null
+    p.yearScore = 0
+    ach(meta, 'pro_cut')
+    out.skip = true
+    yield 'step'
+    return out
+  }
+  if (r < 0.31) { push('career', `【首发】首发 ${mate()} 手伤，你顶上。教练说：「打出来就是你的。」`); out.temp = 4; yield 'step'; return out }
+  if (r < 0.34) {
     push('ban', `【官方公告】队友 ${mate()} 被查出在预选赛收钱放水。${t.name} 本 Stage 取消资格。`, true)
     addFame(meta, -Math.round(p.fame * 0.2))
     const res: StageResult = { year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, note: '全队取消资格' }
@@ -398,9 +443,9 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.26) { push('warn', '【伤病】手腕腱鞘炎复发。医生说这个 Stage 别碰鼠标。', true); out.bench = true; yield 'step'; return out }
-  if (r < 0.29) { push('warn', `【禁赛】你直播口嗨对手，被官方禁赛一场。`); out.temp = -3; yield 'step'; return out }
-  if (r < 0.32) {
+  if (r < 0.36) { push('warn', '【伤病】手腕腱鞘炎复发。医生说这个 Stage 别碰鼠标。', true); out.bench = true; yield 'step'; return out }
+  if (r < 0.38) { push('warn', `【禁赛】你直播口嗨对手，被官方禁赛一场。`); out.temp = -3; yield 'step'; return out }
+  if (r < 0.40) {
     push('ban', '【丑闻】你的私聊记录被人挂上热搜。俱乐部连夜发公告：「经协商，双方解除合同。」', true)
     addFame(meta, -Math.round(p.fame * 0.3))
     deadTeams.add(t.id)
@@ -411,7 +456,7 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.35) {
+  if (r < 0.42) {
     push('ban', `【解散】${t.name} 老板失联，队员在宿舍等了一周。欠薪 ${fm(Math.round(p.salary / 2))} 没了。`, true)
     meta.cash -= Math.round(p.salary / 2)
     deadTeams.add(t.id)
@@ -422,7 +467,7 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.40) { const c = irand(5, 20) * 1000; meta.cash += c; p.income += c; push('career', `【赞助】外设品牌个人代言到账 +${fm(c)}。`); yield 'step'; return out }
+  if (r < 0.47) { const c = irand(5, 20) * 1000; meta.cash += c; p.income += c; push('career', `【赞助】外设品牌个人代言到账 +${fm(c)}。`); yield 'step'; return out }
   return out
 }
 
@@ -518,6 +563,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     say('career', `【${name} · ${INTL_PLACE[stage]}】地区前二出线。`)
     yield 'step'
     if (exposureCheck(meta, '国际赛资格审查')) return
+    if (!p.teamId) { say('warn', `队伍带着替补去了${name}。你在家看的直播。`); yield 'step'; return }
     const opps = Array.from({ length: 7 }, () => irand(stage === 3 ? 72 : 68, 94))
     const foes = [...OPP].sort(() => Math.random() - 0.5)
     let gw = 0
@@ -612,49 +658,37 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
     return
   }
 
-  // 负债压力
+  // 负债压力：家里的电话
   if (meta.cash < -30000) {
-    p.choice = {
-      id: 'debt', title: `负债 ${fm(-meta.cash)}`,
-      body: '家里的电话越来越频繁。',
-      options: [
-        { id: 'debt_stay', label: '再撑一年', cls: 'primary' },
-        { id: 'debt_quit', label: '回家找工作', cls: 'danger', sub: '生涯到此为止' },
-      ],
-    }
-    yield 'choice'
-    const a = answer ?? 'debt_stay'
-    answer = null
-    if (a === 'debt_quit') { endCareer(meta, 'quit'); return }
+    L(meta, 'warn', `负债 ${fm(-meta.cash)}。家里的电话越来越频繁。`)
+    yield 'step'
+    if (rand() < 0.4) { L(meta, 'sys', '你妈说家里给你找了份工作。你没再说什么。'); yield 'step'; endCareer(meta, 'quit'); return }
+    L(meta, 'sys', '你说再撑一年。')
   }
 
-  // 转会窗
+  // 主动退役：年纪到了、成绩一般，或者有的人就是想走
+  if (p.age >= PRO_RETIRE_MIN_AGE && p.yearsPlayed >= 3) {
+    const tired = (p.age >= 26 ? 0.12 : 0.03) + (p.yearScore < 6 ? 0.08 : 0) + (p.benchYears >= 2 ? 0.06 : 0)
+    if (rand() < tired) {
+      L(meta, 'sys', p.titles.world ? '你发了条微博：「该走了。谢谢每一个人。」' : '你发了条微博：「休息一下。」大家都懂。')
+      yield 'step'
+      endCareer(meta, 'retire')
+      return
+    }
+  }
+
+  // 转会窗：报价来了，自己挑
   const offers = makeOffers(meta, true)
   deadTeams.clear()
   if (cur && !offers.some((o) => o.teamId === cur.id)) {
-    L(meta, 'warn', `【转会窗】${cur.name} 没给你续约。`)
+    L(meta, 'warn', `【转会窗】${cur.name} 没给你续约。${rand() < 0.5 ? '经理发了段很长的话，意思是再见。' : '你从官博公告知道的。'}`)
     ach(meta, 'pro_cut')
+    yield 'step'
   }
-  p.choice = offerChoice(meta, offers, true)
-  yield 'choice'
-  const a = answer ?? 'idle'
-  answer = null
-  if (a === 'retire') { endCareer(meta, 'retire'); return }
-  if (a.startsWith('sign:')) {
-    // 新合同下年生效：先记录球队，年薪年初发
-    const [, teamId, salary, role] = a.split(':')
-    const t = teamOf(teamId)!
-    const wasCur = p.teamId === teamId
-    p.teamId = teamId
-    p.salary = Number(salary)
-    meta.cash += p.salary
-    p.income += p.salary
-    p.idleYears = 0
-    L(meta, 'career', `【${wasCur ? '续约' : '转会'}】${t.name}，年薪 ${fm(p.salary)}。${role === 'bench' ? '替补合同。' : ''}`)
-    H(meta, { cls: 'career', text: `${wasCur ? '续约' : '转会'} ${t.name}` })
-    if (!wasCur) ach(meta, 'pro_transfer')
-    if (t.partner) ach(meta, 'pro_partner')
-    if (role === 'bench') p.benchYears++
+  const pick = pickOffer(meta, offers)
+  if (pick) {
+    if (offers.length > 1) L(meta, 'sys', `${offers.length} 份报价摆在桌上。`)
+    applySign(meta, pick, true)
   } else {
     p.teamId = null
     p.idleYears++

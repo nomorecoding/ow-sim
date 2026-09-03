@@ -53,47 +53,94 @@ const PEAK_TITLE: Record<MajorTier, [string, string]> = {
   top: ['顶尖 500 · 路人王', '榜单上有你的名字。没人来签你——或者你没去。'],
 }
 
+/** 生平里值得写一笔的事（按 tally 计数） */
+const TALLY_LABEL: Array<[string, (n: number) => string]> = [
+  ['mute', (n) => `被红框禁言 ${n} 次`],
+  ['streak_lose', (n) => `十连跪 ${n} 回`],
+  ['streak_win', (n) => `十连胜 ${n} 回`],
+  ['crew_off', (n) => `散过 ${n} 个车队`],
+  ['breakup', (n) => `分过 ${n} 次手`],
+  ['gf_ow', () => '找到过一个也玩守望的人'],
+  ['wedding', () => '结了婚'],
+  ['kid', () => '当了爸'],
+  ['dropout', () => '辍过学'],
+  ['layoff', () => '被裁过'],
+  ['college_team', () => '当过校队队长'],
+  ['clip', (n) => `切片火过 ${n} 次`],
+  ['lan', (n) => `上过 ${n} 次线下舞台`],
+  ['netbar_cup', (n) => `打过 ${n} 届网吧赛`],
+  ['boost_rent', (n) => `为房租接过 ${n} 单`],
+  ['escort_taste', () => '被 4 陪 1 带过一季'],
+  ['met_388', () => '排到过 388 一小时的陪玩'],
+  ['back', () => '腰突了'],
+  ['friend_quit', () => '送走过一起打的朋友'],
+  ['patch_nerf', (n) => `本命被削 ${n} 次`],
+]
+
+function lifeStory(g: LifeState): string {
+  const items: string[] = []
+  for (const [k, f] of TALLY_LABEL) {
+    const n = g.tally[k] ?? 0
+    if (n > 0) items.push(f(n))
+  }
+  if (g.stuckTotal >= 3) items.unshift(`卡墙 ${g.stuckTotal} 季`)
+  if (g.usedMarket) items.push(g.dirty.cheatSeasons ? '开过挂' : '请过代练')
+  const picked = items.slice(0, 4)
+  if (!picked.length) return `一辈子没什么大事。人设【${g.persona.name}】——${g.persona.tagline}`
+  return `这一生：${picked.join('，')}。`
+}
+
+const EULOGY = [
+  '你不是最强的，但你排到过最强的。',
+  '这游戏给过你几个凌晨三点的好夜晚。够了。',
+  '没人记得你的 ID。你自己记得。',
+  '你后来再没找到一个能让你连输十把还想再来的东西。',
+  '朋友问你玩了多少小时。你说：不多。',
+  '你删过三次，装回来四次。',
+]
+
 export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEnding {
   const peak = scoreToRank(g.peakScore)
   const real = scoreToRank(g.peakMmr)
   const label = `${g.age} 岁 · 峰值 ${rankLabel(peak)} · 真实峰值 ${rankLabel(real)}`
-  const stat = `${g.season} 季，${g.gamesTotal.toLocaleString()} 把。`
+  const bio = `16 岁开局，${g.age} 岁封盘。${g.season} 季，${g.gamesTotal.toLocaleString()} 把。`
+  const story = lifeStory(g)
+  const eulogy = EULOGY[Math.floor(Math.random() * EULOGY.length)]
 
   if (reason === 'banned') {
-    const cheat = g.dirty.cheatSeasons > 0
     return {
-      id: 'banned', title: cheat ? '封号 · 官方验证通过' : '封号 · 账号共享', rankLabel: label,
+      id: 'banned', title: '永封 · 官方验证通过', rankLabel: label,
       verse: [
-        cheat ? '登录时跳出一行字：该账号因使用第三方程序被永久封停。' : '那个代练带过的号被查了，连带你的一起。',
-        '段位图标还在截图里。号没了。',
-        `${stat}最后一道墙没自己过去。`,
-        '战队不会再看这个 ID。',
+        '登录时跳出一行字：该账号因使用第三方程序被永久封停。申诉入口是灰的。',
+        bio + '最后一道墙没自己过去。',
+        story,
+        '开挂之后解锁的成就一个没算。这个 ID 以后没有战队会看。',
       ],
     }
   }
   if (reason === 'landed') {
     return {
       id: 'landed', title: '上岸', rankLabel: label,
-      verse: ['接单收入过了十万。你把最后一个老板拉黑，付了首付。', '从炸鱼单到高价单，每一单都在匹配池里留下了味道。', '你以后再排到代练，也没资格骂了。'],
+      verse: ['接单收入过了十万。你把最后一个老板拉黑，付了首付。', bio, story, '你以后再排到代练，也没资格骂了。'],
     }
   }
   // 云泥：退坑时停在 X1·99
   if (isAtMajorGate(g.rank) && g.rank.rp === 99) {
     const cm = buildCloudMudEnding(g.rank.major, g.age)
-    if (cm) return cm
+    if (cm) return { ...cm, verse: [...cm.verse, story] }
   }
   const [title, line] = PEAK_TITLE[peak.major]
   const gapLine = g.peakMmr - g.peakScore > 300
     ? `系统一直欠你分：真实峰值 ${rankLabel(real)}，段位从没追上过。`
     : g.peakScore - g.peakMmr > 300
       ? `段位比实力高了一截。${g.usedMarket ? '你知道为什么。' : '陪玩那次。'}`
-      : `段位和实力基本一致。`
+      : ''
   const how = reason === 'age'
     ? `${g.age} 岁。游戏还在硬盘里，你只是不再点开。`
-    : g.stage === 'worker' ? '下班太累了。最后几季都是周末打两把。' : g.stage === 'fulltime' ? '全职打了几年，房租把热情烧完了。' : '不想打了。就是不想打了。'
+    : g.stage === 'worker' ? '下班太累了。最后几季都是周末打两把。' : g.stage === 'fulltime' ? '全职打了几年，房租把热情烧完了。' : g.rich ? '家里给你安排了别的事。' : '不想打了。就是不想打了。'
   return {
     id: `quit_${peak.major}`, title, rankLabel: label,
-    verse: [line, gapLine, stat + how, g.stuckTotal >= 5 ? `一辈子卡墙 ${g.stuckTotal} 季。` : g.goldGuns ? `换了 ${g.goldGuns} 把金枪。` : `人设【${g.persona.name}】——${g.persona.tagline}。`],
+    verse: [line, bio + how, story, gapLine, eulogy].filter(Boolean),
   }
 }
 

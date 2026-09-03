@@ -56,6 +56,24 @@ export const COMMON_EVENTS: LifeEvent[] = [
   { id: 'rot', weight: (g) => m(g).rot / 30, run: () => '你蹲了一整局角落，队友以为你掉线了。' },
   { id: 'trash', weight: (g) => m(g).trash / 30, run: () => '被队友举报「消极比赛」。系统提示：已受理。' },
   { id: 'brainless', weight: (g) => m(g).brainless / 35, run: (g) => { g.mmr -= 20; return '你在对面重生点门口站了一波。' } },
+  { id: 'streak_win', weight: 3, run: (g) => { passion(g, 40); g.mmr += 15; unlock(g, 'streak10'); return `十连胜。你截了图发朋友圈，没人点赞。${pd(40)}。` } },
+  { id: 'streak_lose', weight: 3, run: (g) => { passion(g, -45); return `十连跪。你把鼠标扣在桌上，垫子裂了。${pd(-45)}。` } },
+  { id: 'afk_mate', weight: 3, run: (g) => { passion(g, -20); return `决胜图队友挂机。你一个人守了两分钟。${pd(-20)}。` } },
+  { id: 'new_hero', weight: 2, run: (g) => { g.mmr += 25; passion(g, 30); return `新英雄出了，你第一天就把它练成本命。${pd(30)}。` } },
+  { id: 'old_clip', weight: 2, when: (g) => g.season >= 8, run: (g) => { passion(g, 25); return `翻到三年前自己的录像。那时候打得真烂——也真开心。${pd(25)}。` } },
+  { id: 'friend_quit', weight: 2, when: (g) => g.season >= 6, run: (g) => { passion(g, -50); return `一起打了几年的朋友退坑了，说「有空再约」。你们没再约过。${pd(-50)}。` } },
+  { id: 'server_down', weight: 2, run: (g) => { passion(g, -10); return `国服维护。你打了一晚上亚服，200 ping。${pd(-10)}。` } },
+  { id: 'anniversary', weight: 2, run: (g) => { passion(g, 30); return `周年庆。登录送了个皮肤，你居然有点感动。${pd(30)}。` } },
+  { id: 'mouse_break', weight: 2, run: (g) => { g.cash -= 400; return `鼠标微动双击了。换了个新的，−400。` } },
+  { id: 'fake_scout', weight: 2, when: (g) => sr(g) >= S.diamond, run: (g) => { g.cash -= 300; return `私信「职业青训选拔」，聊了三天发现是卖课的。−300。` } },
+  { id: 'stream_start', weight: 3, when: (g) => g.fans >= 2000 && g.fans < 20000, run: (g) => { const n = irand(200, 800); addFans(g, n); return `你开播了。第一晚 ${irand(8, 30)} 个人，其中三个是你亲戚。人气 +${n}。` } },
+  { id: 'stream_raid', weight: 2, when: (g) => g.fans >= 20000, run: (g) => { const n = irand(3000, 9000); addFans(g, n); g.cash += irand(1000, 4000); return `大主播连麦排到你，蹭了一晚上流量。人气 +${n}。` } },
+  { id: 'lan', weight: 2, when: (g) => sr(g) >= S.master, run: (g) => { const c = irand(2000, 6000); g.cash += c; addFans(g, 500); passion(g, 40); return `线下城市赛。坐在舞台上打的第一把，手一直在抖。奖金 +${c}，${pd(40)}。` } },
+  { id: 'college_team', weight: 2, when: (g) => g.stage === 'student' && g.age >= 18 && sr(g) >= S.diamond, hl: true, run: (g) => { passion(g, 80); addFans(g, 300); unlock(g, 'college_team'); return `进了校队。第一次有人叫你「队长」。${pd(80)}。` } },
+  { id: 'wedding', weight: (g) => (g.age >= 26 ? 2 : 0), when: (g) => !g.tally.wedding, hl: true, run: (g) => { passion(g, -150); g.cash -= 20000; unlock(g, 'married'); return `你结婚了。婚礼当天队友在群里问「今晚打不打」。${pd(-150)}，现金 −20000。` } },
+  { id: 'kid', weight: (g) => (g.tally.wedding ? 3 : 0), when: (g) => !g.tally.kid, hl: true, run: (g) => { passion(g, -200); return `孩子出生了。你把游戏时间改到了凌晨一点以后。${pd(-200)}。` } },
+  { id: 'promotion', weight: 2, when: (g) => g.stage === 'worker', run: (g) => { g.cash += 5000; passion(g, -60); return `升职了。钱多了，时间没了。现金 +5000，${pd(-60)}。` } },
+  { id: 'layoff', weight: 1, when: (g) => g.stage === 'worker' && g.age >= 25, hl: true, run: (g) => { g.cash -= 3000; passion(g, 120); return `被裁了。赔了 N+1，你决定先打两个月再说。${pd(120)}。` } },
   // —— 正经赚钱 / 人气（段位越高越值钱）——
   { id: 'clip', weight: 3, when: (g) => sr(g) >= S.diamond, run: (g) => { const n = irand(800, 2500); addFans(g, n); return `高分局切片火了，评论区全是「开播吧」。人气 +${n}。` } },
   { id: 'coaching', weight: 3, when: (g) => sr(g) >= S.diamond, run: (g) => { const c = sr(g) >= S.gm ? irand(600, 1200) : irand(200, 500); g.cash += c; return `有人找你 1v1 教学。现金 +${c}。教人打和替人打是两回事。` } },
@@ -79,13 +97,15 @@ export const DIRTY_EVENTS: LifeEvent[] = [
   } },
   { id: 'hacker', weight: 3, run: () => '对面一命十三，疑似外挂。你想骂——先掂量红框。' },
   { id: 'false_report', weight: 2, when: (g) => g.pollution > 20, run: () => '脏池子里有人恶意举报你。' },
+  { id: 'sold_alt', weight: 2, when: (g) => g.stage === 'fulltime' && g.cash < 0, run: (g) => { g.cash += 1500; g.pollution += 5; return '把一个小号卖了。买家问「能上分吗」，你说能。现金 +1500。' } },
+  { id: 'streamer_boost', weight: 2, when: (g) => sr(g) >= S.diamond, run: () => '排到一个开播的主播，他带着两个代练。你打完看了眼弹幕，全在夸他。' },
 ]
 
 /* ———————————— 生活池：低频，改阶段 ———————————— */
 export const LIFE_EVENTS: LifeEvent[] = [
   { id: 'dropout', weight: 2, when: (g) => g.stage === 'student' && g.age >= 18 && g.age <= 20 && g.mmr >= S.diamond, hl: true,
     run: (g) => { g.stage = 'fulltime'; g.cash -= 1000; unlock(g, 'stage_fulltime'); return '你辍学了，全职打天梯。爸妈断了生活费，房租自己付。' } },
-  { id: 'rent', weight: 5, when: (g) => g.stage === 'fulltime', run: (g) => { g.cash -= 1500; return `房租到期。现金 −1500（${fmt(g.cash)}）。` } },
+  { id: 'rent', weight: 5, when: (g) => g.stage === 'fulltime' && !g.rich, run: (g) => { g.cash -= 1500; return `房租到期。现金 −1500（${fmt(g.cash)}）。` } },
   { id: 'boost_rent', weight: 4, when: (g) => g.stage === 'fulltime' && g.cash < 0, hl: true, run: (g) => {
     const c = irand(900, 1500)
     g.cash += c
@@ -95,7 +115,7 @@ export const LIFE_EVENTS: LifeEvent[] = [
     unlock(g, 'first_boost')
     return `为了房租接了两单炸鱼。现金 +${c}。这两单会留在账号记录里。`
   } },
-  { id: 'parents', weight: 3, when: (g) => g.stage === 'fulltime', run: (g) => { passion(g, -30); return `你妈打电话问什么时候找工作。${pd(-30)}。` } },
+  { id: 'parents', weight: 3, when: (g) => g.stage === 'fulltime' && !g.rich, run: (g) => { passion(g, -30); return `你妈打电话问什么时候找工作。${pd(-30)}。` } },
   { id: 'parttime', weight: 3, when: (g) => g.stage === 'student', run: (g) => { const c = irand(200, 500); g.cash += c; return `兼职到账 +${c}。` } },
   { id: 'bonus', weight: 3, when: (g) => g.stage === 'worker', run: (g) => { const c = irand(800, 1500); g.cash += c; return `项目奖金 +${c}。` } },
   { id: 'overtime', weight: 3, when: (g) => g.stage === 'worker', run: (g) => { passion(g, -40); g.cash += 3000; return `接了个加班项目。现金 +3000，${pd(-40)}。` } },
@@ -112,6 +132,12 @@ export const EGG_EVENTS: LifeEvent[] = [
   { id: 'egg_mercy', weight: 2, when: (g) => g.persona.id === 'mercy', hl: true, run: (g) => { unlock(g, 'egg_mercy'); return '大海为你分开——你飞过去，被秒了。' } },
   { id: 'egg_wall', weight: 2, when: (g) => g.persona.id === 'wall', hl: true, run: (g) => { g.mmr += 20; unlock(g, 'egg_wall'); return '你杵在点上挨了 40 秒，队友复活回来，点守住了。' } },
   { id: 'egg_rage', weight: 2, when: (g) => g.persona.id === 'rage', hl: true, run: (g) => { addFans(g, 1500); unlock(g, 'egg_rage'); return '你骂人的切片火了。喷子出圈，人气 +1500。' } },
+  { id: 'egg_diva', weight: 2, when: (g) => g.persona.id === 'diva', hl: true, run: (g) => { unlock(g, 'egg_diva'); return '你让全队给你让路。全队真让了。你走进去，死了。' } },
+  { id: 'egg_chuan', weight: 2, when: (g) => g.persona.id === 'chuan', hl: true, run: (g) => { unlock(g, 'egg_chuan'); return '你在公屏说「这游戏比隔壁好玩」，然后用隔壁的术语报点，被识破了。' } },
+  { id: 'egg_fool', weight: 2, when: (g) => g.persona.id === 'fool', hl: true, run: (g) => { passion(g, -20); unlock(g, 'egg_fool'); return `一局被卖三次。第三次你没骂，只是叹了口气。${pd(-20)}。` } },
+  { id: 'egg_push', weight: 2, when: (g) => g.persona.id === 'push', hl: true, run: (g) => { unlock(g, 'egg_push'); return '你从第一波开始教全队做人。第三波开始，全队开始教你。' } },
+  { id: 'egg_idle', weight: 2, when: (g) => g.persona.id === 'idle', hl: true, run: (g) => { unlock(g, 'egg_idle'); return '一局零输出，赢了。你说：「赢就行。」' } },
+  { id: 'egg_greed', weight: 2, when: (g) => g.persona.id === 'greed', hl: true, run: (g) => { unlock(g, 'egg_greed'); return '你一个人吃了全队的血包。奶妈退了。' } },
 ]
 
 function w(e: LifeEvent, g: LifeState) {
@@ -129,6 +155,7 @@ export function pickEvent(g: LifeState, pool: LifeEvent[], used: Set<string>): L
     if (r <= 0) {
       const e = cands[i]
       used.add(e.id)
+      g.tally[e.id] = (g.tally[e.id] ?? 0) + 1
       const text = e.run(g)
       const line = { cls: e.cls ?? 'ev', text }
       if (e.hl) g.highlights.push(line)

@@ -124,15 +124,12 @@ export const MOMENTUM_PER_PCT = 4
 /** 顶尖墙额外要求本季把数 */
 export const TOP_MIN_GAMES = 40
 
-/** 设备三级：突破 +0.08 / 级 */
-export const GEAR_LEVELS = [
-  { level: 1, name: '换鼠标 + 144Hz', cost: 1200 },
-  { level: 2, name: '光纤 + 有线', cost: 3500 },
-  { level: 3, name: '240Hz + 人体工学', cost: 9000 },
-]
-export const GEAR_BONUS = 0.08
-export const TRAIN_BONUS = 0.15
-export const TRAIN_PASSION_COST = 60
+/** 瓶颈抉择：换英雄池（先掉分，再爆发） / 找教练复盘（花钱堆势） */
+export const SWITCH_POOL_DROP = 80
+export const SWITCH_POOL_SEASONS = 3
+export const SWITCH_POOL_MULT = 1.5
+export const COACH_COST = 1500
+export const COACH_MOMENTUM = 120
 export const CREW_BONUS = 0.1
 
 /* ———————————— 死线抉择：黑市 ———————————— */
@@ -146,23 +143,33 @@ export const BOOSTER_QUOTE: Array<{ maxMajor: MajorTier; name: string; price: nu
   { maxMajor: 'top', name: 'OWCS 选手代练', price: 120 },
 ]
 export const MARKET_BOOST_PASS = 0.9
-export const MARKET_BOOST_BAN = 0.2
 export const MARKET_CHEAT_PASS = 0.97
-export const MARKET_CHEAT_BAN = 0.5
-/** 黑市过墙后每季补封概率 */
-export const REPORT_BAN_PER_SEASON = { boost: 0.05, cheat: 0.12 }
+/** 代练留下的举报堆栈：每季被查概率 → 封 30 天（停一季） */
+export const BOOST_SUSPEND_P = 0.1
+/** 开挂：每季被查概率，且最迟 N 季内必被查 → 永封 */
+export const CHEAT_CATCH_P = 0.35
+export const CHEAT_CATCH_MAX = 4
+/** 代练 / 陪玩史在职业期被爆：禁赛 Stage 数、下几辈子没人私信 */
+export const EXPOSED_SUSPEND = 2
+export const EXPOSED_BLOCK_LIVES = 2
 /** 代练收入到此 → 「上岸」结局 */
 export const BOOST_LANDED_CASH = 100000
-
-/* ———————————— 竞技点彩蛋 ———————————— */
-export const CP_PER_WIN = 15
-export const GUN_COST = 3000
-export const GUN_PASSION = 30
 
 /* ———————————— 被发掘 ———————————— */
 export const SCOUT_P: Partial<Record<MajorTier, number>> = { gm: 0.05, champ: 0.15, top: 0.3 }
 /** 试训通过基础概率（天赋加成另算） */
 export const TRIAL_BASE = 0.55
+/** 有代练 / 陪玩记录时试训通过率的折扣（开挂记录直接政审不过） */
+export const TRIAL_DIRTY_MULT = 0.6
+
+/* ———————————— 成就奖励：按成就数解锁的传承 ———————————— */
+export const ACH_PERKS: Array<{ n: number; id: string; name: string; desc: string }> = [
+  { n: 10, id: 'reroll', name: '重摇', desc: '开局摇两次天赋，取高' },
+  { n: 20, id: 'rich', name: '出身', desc: '30% 生在富裕家庭：热情 +150、现金 +20000、没有房租' },
+  { n: 30, id: 'scout', name: '人脉', desc: '被发掘概率 ×1.5' },
+  { n: 40, id: 'passion', name: '热爱', desc: '起始热情 +100' },
+  { n: 50, id: 'pro', name: '底子', desc: '职业状态成长起点 +3' },
+]
 
 /* ———————————— 职业线（OWCS 中国赛区） ———————————— */
 

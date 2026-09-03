@@ -117,19 +117,23 @@ export interface LifeState {
   fans: number
   /** 匹配环境污染（隐藏） */
   pollution: number
-  /** 竞技点（隐藏计数 → 金枪彩蛋） */
-  compPoints: number
-  goldGuns: number
-  jadeThisYear: boolean
   muteCount: number
+  /** 事件计数（生平用） */
+  tally: Record<string, number>
   /** 黑市过墙后留下的举报堆栈 */
   reportStacks: number
-  /** 设备等级 0–3：突破加成 */
-  gear: number
-  /** 一次性练枪加成 */
-  trainBonus: number
-  /** 车队 / 教练 buff（剩余季数） */
+  /** 开挂后的倒计时：几季内必被查 */
+  cheatClock: number
+  /** 换英雄池后的爆发期（剩余季数，斜率 ×1.5） */
+  spurtSeasons: number
+  /** 车队 buff（剩余季数） */
   crewSeasons: number
+  /** 被封 30 天：下季停打 */
+  suspendedNext: boolean
+  /** 开挂后成就锁定 */
+  achLocked: boolean
+  /** 出身：富裕 */
+  rich: boolean
   /** 段位虚高（陪玩体验）：本季 SR 额外 + */
   fakeBoost: number
 
@@ -138,8 +142,10 @@ export interface LifeState {
   /** 是否用过黑市过墙 */
   usedMarket: boolean
   banned: boolean
-  /** 被发掘 → 进职业 */
+  /** 被发掘 → 进职业（之后的日志继续滚在同一条时间线上） */
   scouted: boolean
+  /** 进职业时的年龄 / 段位 */
+  scoutedAt?: { age: number; rank: RankState }
   /** 拒绝过试训的次数 */
   refusedTrials: number
   /** 是否已做过瓶颈抉择 / 死线抉择（一局各最多一次） */
@@ -269,6 +275,10 @@ export interface MetaSave {
   bestTalent?: TalentTier
   /** 首次触及各大段（里程碑成长点） */
   reached: Partial<Record<MajorTier, boolean>>
+  /** 职业圈拉黑：还剩几辈子没人私信你（代练 / 陪玩史在职业期被爆） */
+  proBlockLives: number
+  /** 开过挂的人生数 */
+  cheatLives: number
   /** 累计统计 */
   bestPeakScore: number
   scoutedTimes: number

@@ -203,6 +203,17 @@ b { font-weight: 600; color: var(--bone); }
 }
 @keyframes shimmer { from { background-position: 0% 0; } to { background-position: 300% 0; } }
 
+/* 一行版：下辈子投胎 / 传承 */
+.tal-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.78rem; }
+.tal-line .talent-badge { padding-left: 8px; letter-spacing: 0.14em; }
+.tal-line .talent-badge .num { font-size: 0.86rem; letter-spacing: 0; margin-left: 2px; }
+.tal-line .sep { color: var(--bone-faint); }
+.perk {
+  font-family: var(--display); font-size: 0.74rem; letter-spacing: 0.2em;
+  padding: 3px 10px; border: 1px solid var(--hair); color: var(--bone-faint);
+}
+.perk.on { color: var(--brass); border-color: rgba(201, 165, 92, 0.45); }
+
 .tal-row {
   display: grid; grid-template-columns: 92px 1fr 46px 30px;
   gap: 12px; align-items: center;
