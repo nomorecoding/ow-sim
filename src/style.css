@@ -338,11 +338,38 @@ b { font-weight: 600; color: var(--bone); }
   background: var(--ink-2);
   border-top: 1px solid var(--hair-2);
   padding: 22px 22px 30px;
+  max-height: 92vh; overflow-y: auto;
   animation: sheetUp 0.32s cubic-bezier(.2,.8,.2,1) both;
 }
 @keyframes sheetUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .mask-title { font-family: var(--display); letter-spacing: 0.2em; font-size: 1rem; margin-bottom: 14px; color: var(--bone); }
 .mask-body { font-size: 0.86rem; line-height: 1.75; color: var(--bone); margin-bottom: 16px; }
+
+/* ———— 人生路 ———— */
+.road { display: flex; flex-direction: column; gap: 10px; }
+.road-row { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; font-size: 0.8rem; line-height: 1.6; color: var(--bone); }
+.road-k { color: var(--bone-dim); letter-spacing: 0.12em; font-size: 0.72rem; padding-top: 2px; }
+.road-bar { margin-top: 6px; background: var(--hair-2); }
+
+/* ———— 轻提示 ———— */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); z-index: 40;
+  max-width: min(520px, calc(100% - 32px));
+  background: var(--ink-2); color: var(--bone); border: 1px solid var(--hair-2); border-left: 2px solid var(--brass);
+  padding: 10px 14px; font-size: 0.8rem; line-height: 1.6;
+  opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ———— 调试抽屉 ———— */
+.debug {
+  position: fixed; right: 10px; bottom: 10px; z-index: 50;
+  display: grid; grid-template-columns: repeat(2, auto); gap: 4px;
+  background: rgba(8, 8, 9, 0.92); border: 1px dashed var(--hair-2); padding: 8px;
+}
+.debug-title { grid-column: 1 / -1; font-size: 0.66rem; letter-spacing: 0.2em; color: var(--bone-faint); }
+.debug button { font: inherit; font-size: 0.7rem; padding: 4px 8px; background: transparent; color: var(--bone-dim); border: 1px solid var(--hair-2); cursor: pointer; }
+.debug button:hover { color: var(--brass); border-color: var(--brass); }
 
 /* ———— 结局 ———— */
 .ending-card { padding: 22px 0 10px; text-align: center; }

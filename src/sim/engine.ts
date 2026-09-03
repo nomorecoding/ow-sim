@@ -54,6 +54,8 @@ export function freshMeta(): MetaSave {
     dirty: { boostJobs: 0, hires: 0, cheatSeasons: 0 },
     cashLow: INIT_CASH,
     reachedGM: false,
+    snooze: {},
+    seen: {},
     goldGuns: 0,
     jadeGuns: 0,
     jadeThisYear: false,
@@ -78,6 +80,8 @@ export function loadMeta(): MetaSave {
       m.career = { ...fresh.career, ...m.career }
       m.talentLog = { ...fresh.talentLog, ...m.talentLog }
       m.dirty = { ...fresh.dirty, ...m.dirty }
+      m.snooze = m.snooze ?? {}
+      m.seen = m.seen ?? {}
       return m
     }
     // 迁移旧档：保留赛季数 / 时长 / 成就 / 速度设置；数值尺度变了，钱重置
@@ -130,7 +134,10 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
   const points = growthPoints(meta.growth, meta.age)
   // 签约期间：战队训练环境 → 成长加成 + 硬兜底「有点东西」，职业选手在钻石–英杰浮动
   const pro = meta.career.phase === 'signed'
-  const talent = rollTalent(pro ? points + PRO_GROWTH_BONUS : points, pro ? PRO_TALENT_FLOOR : undefined)
+  const talent = meta.debugTalent
+    ? { tier: meta.debugTalent, mmr: irand(TALENT_INFO[meta.debugTalent].min, TALENT_INFO[meta.debugTalent].max) }
+    : rollTalent(pro ? points + PRO_GROWTH_BONUS : points, pro ? PRO_TALENT_FLOOR : undefined)
+  meta.debugTalent = undefined
 
   const softReset = isSoftResetSeason(meta)
   let anchor: number
@@ -189,6 +196,7 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
     logs,
     events: [],
     helper: null,
+    lastHelper: null,
     marketPrompted: false,
     marketHint: null,
     helperDone: false,
@@ -218,6 +226,7 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
   // 开赛前预订的帮手：第一把就上号
   if (meta.preorder) {
     g.helper = { ...meta.preorder }
+    g.lastHelper = { ...meta.preorder }
     g.dirtyThisSeason = true
     g.dirty.hires++
     g.envPollution += meta.preorder.kind === 'boost' ? 6 : 3 * meta.preorder.count
@@ -619,7 +628,11 @@ export function settleSeason(g: GameState): LogLine[] {
   if (g.bestStreak >= 6) g.highlights.push({ cls: 'win', text: `${g.bestStreak} 连胜` })
   if (g.worstStreak >= 6) g.highlights.push({ cls: 'lose', text: `${g.worstStreak} 连败` })
   for (const e of g.events) if (e.cls === 'career' || e.cls === 'ban') g.highlights.push(e)
-  for (const l of logs) if (l.cls === 'career' && l.text.includes('名次')) g.highlights.push(l)
+  // 结算阶段的职业线大事：试训 / 签约 / 名次 / 国际赛 / 转会 / 解散 / 禁赛 / 退役
+  for (const l of logs) {
+    if (l.cls === 'ban' || l.cls === 'ending') g.highlights.push(l)
+    else if ((l.cls === 'career' || l.cls === 'warn') && /名次|【签约】|【试训】.*没签|【转会窗】|【解散】|【退役】|【假赛】|【组队】|【年末】/.test(l.text)) g.highlights.push(l)
+  }
   return logs
 }
 

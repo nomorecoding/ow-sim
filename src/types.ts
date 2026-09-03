@@ -206,6 +206,8 @@ export interface GameState {
   logs: LogLine[]
   events: LogLine[]
   helper: Helper | null
+  /** 本季最近一次买的套餐（一键续同款） */
+  lastHelper: Helper | null
   /** 本季是否已弹过黑市提醒 */
   marketPrompted: boolean
   /** 待弹出的黑市提醒文案（UI 消费后清空） */
@@ -279,4 +281,10 @@ export interface MetaSave {
   boostEarnedTotal: number
   bansTotal: number
   accountNo: number
+  /** 弹窗邀约「下次再说」到第几个赛季为止 */
+  snooze: Record<string, number>
+  /** 一次性提示是否已看过 */
+  seen: Record<string, boolean>
+  /** 调试：下季强制天赋 */
+  debugTalent?: TalentTier
 }

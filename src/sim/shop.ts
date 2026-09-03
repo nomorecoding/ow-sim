@@ -20,6 +20,7 @@ export function hireBooster(g: GameState, tierId: string): LogLine {
   g.cash -= cost
   const carry = g.helper?.kind === 'boost' && g.helper.tier === tierId ? g.helper.left : 0
   g.helper = { kind: 'boost', tier: tierId, count: 1, left: HELPER_PACK_GAMES + carry }
+  g.lastHelper = { ...g.helper, left: HELPER_PACK_GAMES }
   g.helperDone = false
   g.envPollution += 6
   g.dirtyThisSeason = true
@@ -41,6 +42,7 @@ export function hireEscort(g: GameState, tierId: string, count: number): LogLine
   g.cash -= cost
   const carry = g.helper?.kind === 'escort' && g.helper.tier === tierId && g.helper.count === n ? g.helper.left : 0
   g.helper = { kind: 'escort', tier: tierId, count: n, left: HELPER_PACK_GAMES + carry }
+  g.lastHelper = { ...g.helper, left: HELPER_PACK_GAMES }
   g.helperDone = false
   const pol = 3 * n
   g.envPollution += pol
@@ -77,6 +79,13 @@ export function cancelPreorder(meta: MetaSave): LogLine {
   meta.cash += refund
   meta.preorder = undefined
   return { cls: 'sys', text: `预订取消，退回 ${refund}。` }
+}
+
+/** 一键续同款 */
+export function rehire(g: GameState): LogLine {
+  const h = g.lastHelper
+  if (!h) return { cls: 'sys', text: '本季还没买过套餐。' }
+  return h.kind === 'boost' ? hireBooster(g, h.tier) : hireEscort(g, h.tier, h.count)
 }
 
 export function describeHelper(h: Helper): string {
