@@ -59,8 +59,8 @@ export const STAGE_INFO: Record<LifeStage, { name: string; quota: number; desc: 
   coach: { name: '教练', quota: -20, desc: '带队为主，偶尔上号', income: [6000, 9000], expense: 3000 },
 }
 
-/** 主播：每赛季收入 = 人气 × 此系数（人气 1 万 ≈ 5000/季；10 万 ≈ 5 万/季） */
-export const STREAM_INCOME_PER_FAN = 0.5
+/** 主播：每赛季收入 = 人气 × 此系数（人气 1 万 ≈ 3000/季；10 万 ≈ 3 万/季） */
+export const STREAM_INCOME_PER_FAN = 0.3
 /** 组主播队门槛与开销 */
 export const OWN_TEAM_MIN_FANS = 30000
 export const OWN_TEAM_SETUP_COST = 50000

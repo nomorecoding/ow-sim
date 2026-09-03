@@ -32,9 +32,15 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'gold_gun', name: '第一把金枪', desc: '3000 竞技点换金枪' },
   { id: 'gold_gun5', name: '金光闪闪', desc: '5 把金枪' },
   { id: 'jade_gun', name: '玉枪', desc: '年度限定玉枪' },
-  { id: 'rich', name: '存款过万', desc: '现金 ≥ 10000' },
+  { id: 'rich', name: '十万存款', desc: '现金 ≥ 100000' },
+  { id: 'millionaire', name: '百万', desc: '现金 ≥ 1000000' },
   { id: 'broke', name: '钱包见底', desc: '现金归零' },
+  { id: 'debt', name: '负债', desc: '赛季结束时现金为负，开始滚利息' },
+  { id: 'debt_deep', name: '深渊', desc: '负债超过 100000' },
   { id: 'gear_max', name: '设备党', desc: '设备升满' },
+  { id: 'preorder', name: '有备而来', desc: '开赛前就在黑市预订了帮手' },
+  { id: 'ended_early', name: '提前收官', desc: '锁定段位，提前结束赛季' },
+  { id: 'dream_given', name: '找份正业', desc: '负债之下选择上班，放弃职业梦' },
   // —— 黑化线 ——
   { id: 'first_escort', name: '花钱买段', desc: '第一次请代练 / 陪玩' },
   { id: 'escort_388', name: '388 一小时', desc: '请过 OWL 级陪玩' },
@@ -53,6 +59,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'age_25', name: '二十五岁', desc: '25 岁还在打天梯' },
   { id: 'age_30', name: '三十而立', desc: '30 岁还在打天梯' },
   // —— 职业线（荣誉，金框） ——
+  { id: 'career_apply', name: '自荐', desc: '主动报名试训', honor: true },
   { id: 'career_scouted', name: '被看见', desc: '收到战队经理私信', honor: true },
   { id: 'career_signed', name: '签约', desc: '通过试训，成为职业选手', honor: true },
   { id: 'career_partner', name: '合作战队', desc: '效力 OWCS 合作战队', honor: true },
@@ -63,7 +70,18 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'career_world_champ', name: '世界冠军', desc: '国际赛夺冠', honor: true },
   { id: 'career_worldcup', name: '国家队', desc: '入选守望先锋世界杯国家队', honor: true },
   { id: 'career_cut', name: '被裁', desc: '转会窗没拿到续约', honor: true },
+  { id: 'career_disband', name: '老板撤资', desc: '所在战队解散', honor: true },
   { id: 'career_retired', name: '退役', desc: '职业生涯结束', honor: true },
+  { id: 'career_lifetime_ban', name: '终身禁赛', desc: '黑历史被翻出来，职业线永闭', honor: true },
+  { id: 'fixed_match', name: '假赛风波', desc: '队友假赛，全队取消资格', honor: true },
+  { id: 'hell_return', name: '地狱归来', desc: '负债两万以下，之后干干净净单季职业收入 30 万或国际赛夺冠', honor: true },
+  // —— 主播线 ——
+  { id: 'fans_10k', name: '万粉', desc: '人气 ≥ 10000' },
+  { id: 'fans_100k', name: '十万粉', desc: '人气 ≥ 100000' },
+  { id: 'own_team', name: '组队', desc: '用人气组了自己的主播队', honor: true },
+  { id: 'own_team_owcs', name: '主播队进正赛', desc: '自组队打进 OWCS 常规赛', honor: true },
+  { id: 'own_team_champ', name: '老板夺冠', desc: '自组队拿下地区 Stage 冠军', honor: true },
+  { id: 'own_team_disband', name: '解散', desc: '主播队解散' },
 ]
 
 export const ACH_MAP: Record<string, Achievement> = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]))

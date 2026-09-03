@@ -176,7 +176,7 @@ export interface GameState {
   credit: number
   compPoints: number
   /** 人气（粉丝数量级）：主播收入、组队门槛 */
-  fans?: number
+  fans: number
   playtime: number
   envPollution: number
   redBox: boolean
@@ -184,11 +184,13 @@ export interface GameState {
   muteCount: number
   /** 终身禁赛（= career.phase === 'banned'） */
   careerBanned: boolean
-  dirty?: DirtyHistory
+  dirty: DirtyHistory
   /** 本季是否开过挂（写入黑历史） */
-  cheatedThisSeason?: boolean
+  cheatedThisSeason: boolean
   /** 本季职业收入（底薪 + 奖金），地狱归来判定用 */
-  proIncome?: number
+  proIncome: number
+  /** 历史最低现金 */
+  cashLow: number
   reportStacks: number
   banned: boolean
   season: number
@@ -209,9 +211,9 @@ export interface GameState {
   /** 待弹出的黑市提醒文案（UI 消费后清空） */
   marketHint: string | null
   /** 帮手刚打完套餐：UI 弹「续单 / 提前结束 / 自己打」 */
-  helperDone?: boolean
+  helperDone: boolean
   /** 提前结束赛季锁定段位 */
-  endedEarly?: boolean
+  endedEarly: boolean
   /** 赛季高光（结算页展示） */
   highlights: LogLine[]
   winStreak: number
@@ -256,13 +258,13 @@ export interface MetaSave {
   cash: number
   credit: number
   compPoints: number
-  fans?: number
-  dirty?: DirtyHistory
+  fans: number
+  dirty: DirtyHistory
   /** 历史最低现金（负债深度，地狱归来判定） */
-  cashLow?: number
+  cashLow: number
   /** 是否曾触及宗师（解锁报名试训） */
-  reachedGM?: boolean
-  /** 开赛前预订的帮手（已付款，开赛即上号） */
+  reachedGM: boolean
+  /** 开赛前在黑市预订的帮手（已付款，开局即上号） */
   preorder?: Helper
   goldGuns: number
   jadeGuns: number

@@ -64,6 +64,34 @@ export function buildRetireEnding(g: GameState): SeasonEnding {
   }
 }
 
+export function buildLifetimeBanEnding(g: GameState, reason: string): SeasonEnding {
+  return {
+    id: 'lifetime_ban',
+    title: '终身禁赛',
+    rankLabel: `${g.age} 岁 · ${rankLabel(g.rank)}`,
+    verse: [
+      reason,
+      '公告只有三行，你的名字在第二行。',
+      '当年那几单代练、那几套陪玩，每一笔都在账号记录里。',
+      '这个存档的职业线到此为止。天梯还能打，只是再没有人会私信你了。',
+    ],
+  }
+}
+
+export function buildHellReturnEnding(g: GameState, low: number, income: number): SeasonEnding {
+  return {
+    id: 'hell_return',
+    title: '地狱归来',
+    rankLabel: `${g.career.team?.name ?? ''} · ${g.age} 岁`,
+    verse: [
+      `最低的时候，账上是 ${low}。房租、利息、家里的电话。`,
+      '你没接单，没请人，没开挂。就是打。',
+      `这个赛季，职业收入 ${income.toLocaleString()}。`,
+      '从负债到领奖台，中间没有捷径，只有你自己知道那几百把是怎么打下来的。王者风范，地狱归来。',
+    ],
+  }
+}
+
 export function buildTopEnding(g: GameState): SeasonEnding {
   return {
     id: 'top500',
