@@ -14,7 +14,6 @@ export function hireBooster(g: GameState, tierId: string): LogLine {
   const t = HELPER_TIERS.find((x) => x.id === tierId)
   if (!t || !t.boost) return { cls: 'sys', text: '这个档没有代练服务。' }
   if (g.identity === 'cheat') return { cls: 'sys', text: '开着挂请代练？代练看到你的号直接跑了。' }
-  if (g.career.phase === 'signed') return { cls: 'sys', text: '职业选手的号给代练？被查到就是终身禁赛。你没敢。' }
   const cost = helperCost('boost', tierId, 1)
   if (g.cash < cost) return { cls: 'sys', text: `现金不足：${t.name}代练 ${HELPER_PACK_GAMES} 把需要 ${cost}，你只有 ${g.cash}` }
   g.cash -= cost
@@ -61,7 +60,6 @@ export function preorderHelper(meta: MetaSave, kind: 'boost' | 'escort', tierId:
   const t = HELPER_TIERS.find((x) => x.id === tierId)
   if (!t) return { cls: 'sys', text: '这个档不存在。' }
   if (kind === 'boost' && !t.boost) return { cls: 'sys', text: '这个档没有代练服务。' }
-  if (meta.career.phase === 'signed') return { cls: 'sys', text: '职业选手预订代练陪玩？被查到就是终身禁赛。' }
   if (meta.preorder) return { cls: 'sys', text: '已经有一份预订了，先取消再换。' }
   const n = kind === 'escort' ? Math.max(1, Math.min(ESCORT_MAX_COUNT, count)) : 1
   const cost = helperCost(kind, tierId, n)
@@ -98,13 +96,8 @@ export function takeBoostJob(g: GameState, jobId: string): LogLine {
   const job = BOOST_JOBS.find((j) => j.id === jobId)
   if (!job) return { cls: 'sys', text: '单子不存在。' }
   if (g.identity === 'cheat') return { cls: 'sys', text: '开着挂接单？老板不敢用你。' }
-  if (g.career.phase === 'signed') return { cls: 'sys', text: '职业选手接代练？被拍到就是解约加终身禁赛。你没敢。' }
   g.identity = 'boost'
   g.dirty.boostJobs++
-  if (g.career.phase === 'scouted') {
-    g.career.phase = 'none'
-    g.career.team = undefined
-  }
   g.cash += job.payout
   g.boostEarned += job.payout
   g.envPollution += job.pollution
@@ -112,7 +105,7 @@ export function takeBoostJob(g: GameState, jobId: string): LogLine {
   unlock(g, 'first_boost')
   return {
     cls: 'warn',
-    text: `你接了【${job.name}】，入账 +${job.payout}，污染 +${job.pollution}。这一单会留在账号记录里——以后打职业，背调可能翻出来。`,
+    text: `你接了【${job.name}】，入账 +${job.payout}，污染 +${job.pollution}。这一单会留在账号记录里。`,
   }
 }
 

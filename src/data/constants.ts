@@ -1,4 +1,4 @@
-import type { LifeStage, MajorTier, Persona, RankModifier, RankState, TalentTier, Team } from '../types'
+import type { Form, LifeStage, MajorTier, Persona, RankModifier, RankState, TalentTier, Team } from '../types'
 
 export const MAJOR_ORDER: MajorTier[] = [
   'bronze', 'silver', 'gold', 'plat', 'emerald', 'diamond', 'master', 'gm', 'champ', 'top',
@@ -47,40 +47,23 @@ export const CP_SEASON_REWARD: Record<MajorTier, number> = {
 export const GUN_COST = 3000
 
 /**
- * 生涯阶段：额度修正 + 每赛季固定收支（单位：元；一个天梯赛季 ≈ 两个月）。
- * 主播收入另按人气算，见 STREAM_INCOME_PER_FAN。
+ * 人生阶段（天梯模式背景）：额度修正 + 每赛季固定收支（单位：元；一个天梯赛季 ≈ 两个月）。
  */
 export const STAGE_INFO: Record<LifeStage, { name: string; quota: number; desc: string; income: [number, number]; expense: number }> = {
   student: { name: '学生', quota: 20, desc: '课少时间多，靠生活费', income: [1200, 2000], expense: 0 },
   worker: { name: '上班', quota: -40, desc: '下班才能打，工资稳', income: [9000, 14000], expense: 5000 },
   dropout: { name: '辍学全职', quota: 60, desc: '全天肝，没收入，房租照付', income: [0, 0], expense: 2500 },
-  streamer: { name: '主播', quota: 30, desc: '边播边打，收入看人气', income: [0, 600], expense: 2500 },
   free: { name: '财富自由', quota: 70, desc: '理财收益够花', income: [6000, 9000], expense: 5000 },
-  coach: { name: '教练', quota: -20, desc: '带队为主，偶尔上号', income: [6000, 9000], expense: 3000 },
 }
-
-/** 主播：每赛季收入 = 人气 × 此系数（人气 1 万 ≈ 3000/季；10 万 ≈ 3 万/季） */
-export const STREAM_INCOME_PER_FAN = 0.3
-/** 组主播队门槛与开销 */
-export const OWN_TEAM_MIN_FANS = 30000
-export const OWN_TEAM_SETUP_COST = 50000
-/** 主播队每赛季付队友底薪 */
-export const OWN_TEAM_ROSTER_COST = 15000
-/** 主播队老板拿奖金的倍数 */
-export const OWN_TEAM_PRIZE_MULT = 2
-/** 主播队赞助：每赛季人气 × 系数 */
-export const OWN_TEAM_SPONSOR_PER_FAN = 0.3
 
 /** 负债：每赛季利息 */
 export const DEBT_INTEREST = 0.06
-/** 负债到此：签约选手年末退役概率 +，主播队可能解散 */
-export const DEBT_HEAVY = -30000
 /** 财富自由门槛 */
 export const FREE_CASH = 300000
-/** 「地狱归来」：曾负债到此以下，后来单季职业收入 ≥ HELL_RETURN_INCOME 或拿国际赛冠军 */
+/** 「地狱归来」阈值：曾负债到此以下 / 之后单年职业收入 */
 export const HELL_DEBT = -20000
 export const HELL_RETURN_INCOME = 300000
-/** 报名试训解锁：触及宗师，或累计赛季数 ≥ 此 */
+/** 职业模式解锁：触及宗师，或累计天梯赛季数 ≥ 此 */
 export const PRO_UNLOCK_SEASONS = 10
 
 /** 永久额度修正的上下限（控制总期望） */
@@ -115,7 +98,6 @@ export const TALENT_INFO: Record<TalentTier, { name: string; range: string; min:
 
 export const GROWTH_CAP = 30
 export const GROWTH_SEASONS_CAP = 15
-export const GROWTH_TRAINING_CAP = 6
 /** 每 N 个成就 → 英雄池 +1 */
 export const ACH_PER_HERO_POOL = 5
 
@@ -156,8 +138,8 @@ export const TEAMS: Team[] = [
   { id: 'nb', name: '网吧一队', partner: false, rating: 38 },
 ]
 
-/** 底薪（每天梯赛季 ≈ 两个月；现实里 OWCS 中国底薪不高） */
-export const SALARY = { partner: [20000, 40000] as const, normal: [6000, 12000] as const }
+/** 年薪（现实里 OWCS 中国底薪不高；合作战队体面） */
+export const SALARY = { partner: [80000, 160000] as const, normal: [30000, 60000] as const, bench: [15000, 30000] as const }
 /** 地区名次奖金（人均分成） */
 export const STAGE_PRIZE = [0, 60000, 30000, 15000, 8000, 3000, 1500, 0, 0]
 /** 国际赛名次奖金（人均分成，基准）× 各站倍数 */
@@ -166,16 +148,26 @@ export const INTL_MULT: Record<1 | 2 | 3, number> = { 1: 0.6, 2: 1.2, 3: 1.5 }
 export const INTL_NAME: Record<1 | 2 | 3, string> = { 1: 'Champions Clash', 2: '年中冠军赛 · EWC', 3: '世界总决赛' }
 export const INTL_PLACE: Record<1 | 2 | 3, string> = { 1: '首尔', 2: '利雅得', 3: '斯德哥尔摩' }
 
-/** 被发掘条件：本季 ≥ 宗师 且已打 ≥ 40 把（老玩家 ≥10 季放宽到大师） */
-export const SCOUT_MIN_SCORE = 7 * 500
-export const SCOUT_VETERAN_SCORE = 6 * 500
-export const SCOUT_MIN_MATCHES = 40
-export const RETIRE_AGE = 25
-/** 签约期间天赋兜底档 + 训练环境成长加成 */
-export const PRO_TALENT_FLOOR = 'something' as const
-export const PRO_GROWTH_BONUS = 8
+/** 职业模式：开局年龄、可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
+export const PRO_START_AGE = 17
+export const PRO_RETIRE_MIN_AGE = 22
+export const PRO_DECLINE_AGE = 25
+export const PRO_FORCE_RETIRE_AGE = 31
+/** 无队一年的生活开销 */
+export const PRO_IDLE_EXPENSE = 15000
 
-/** 队友名池（主播队 / 花边用） */
+/** 本年状态档（职业模式的天赋）：个人实力区间 + 基础权重 + 每成长点系数 */
+export const FORM_ORDER: Form[] = ['slump', 'ok', 'online', 'peak', 'god']
+export const FORM_INFO: Record<Form, { name: string; min: number; max: number; base: number; grow: number; cls: string }> = {
+  slump:  { name: '低迷', min: 40, max: 54, base: 22, grow: -0.03, cls: 'tal-0' },
+  ok:     { name: '一般', min: 52, max: 66, base: 40, grow: 0,     cls: 'tal-1' },
+  online: { name: '在线', min: 62, max: 78, base: 26, grow: 0.05,  cls: 'tal-2' },
+  peak:   { name: '巅峰', min: 74, max: 90, base: 10, grow: 0.07,  cls: 'tal-3' },
+  god:    { name: '神仙', min: 86, max: 99, base: 2,  grow: 0.06,  cls: 'tal-4' },
+}
+export const PRO_GROWTH_CAP = 30
+
+/** 队友名池 */
 export const MATE_NAMES = ['小北', '阿豪', 'Kiro', '沁沁', '老白', 'Zed', '丸子', 'Nine', '阿远', 'Lumi', '大只', 'Vex', '卷卷', 'Sora', '皮皮', 'Yuki']
 
 /**

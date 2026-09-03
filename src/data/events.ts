@@ -2,7 +2,10 @@ import type { GameState, LogLine } from '../types'
 import { irand, rand, rankScore } from '../sim/rank'
 import { unlock } from '../sim/ach'
 import { FREE_CASH, STAGE_INFO } from './constants'
-import { addFans } from '../sim/career'
+
+export function addFans(g: GameState, n: number) {
+  g.fans = Math.max(0, Math.round(g.fans + n))
+}
 
 export interface GameEvent {
   id: string
@@ -25,7 +28,6 @@ function modQuota(g: GameState, d: number) {
   g.quotaMax = Math.max(g.quotaLeft, g.quotaMax + Math.round(d / 2))
 }
 
-const signed = (g: GameState) => g.career.phase === 'signed'
 const fmt = (n: number) => n.toLocaleString()
 
 /* ———————————— 常规（干净）池 ———————————— */
@@ -76,39 +78,21 @@ export const DIRTY_EVENTS: GameEvent[] = [
 
 /* ———————————— 生活 / 生涯阶段池（低频，永久） ———————————— */
 export const LIFE_EVENTS: GameEvent[] = [
-  { id: 'graduate', weight: 3, when: (g) => g.stage === 'student' && g.age >= 22 && !signed(g),
+  { id: 'graduate', weight: 3, when: (g) => g.stage === 'student' && g.age >= 22,
     run: (g) => { setStage(g, 'worker'); return `毕业了，开始上班。以后只能下班打，赛季额度永久 ${STAGE_INFO.worker.quota}，但每季有工资。` } },
   { id: 'dropout', weight: 2, when: (g) => g.stage === 'student' && score(g) >= S.diamond && g.age >= 18,
     run: (g) => { setStage(g, 'dropout'); g.cash -= 1000; return `你辍学了，全职打天梯。额度永久 +${STAGE_INFO.dropout.quota}，但爸妈断了生活费，房租自己付。现金 −1000。` } },
-  { id: 'free', weight: 2, when: (g) => g.stage !== 'free' && g.cash >= FREE_CASH && !signed(g),
+  { id: 'free', weight: 2, when: (g) => g.stage !== 'free' && g.cash >= FREE_CASH,
     run: (g) => { setStage(g, 'free'); return `存款过三十万，你辞了职——「财富自由」。额度永久 +${STAGE_INFO.free.quota}。` } },
-  { id: 'viral', weight: 2, when: (g) => g.stage !== 'streamer' && g.stage !== 'coach' && !signed(g) && (score(g) >= S.gm || g.muteCount >= 2),
+  { id: 'viral', weight: 2, when: (g) => score(g) >= S.gm || g.muteCount >= 2,
     run: (g) => { addFans(g, irand(800, 2500)); return score(g) >= S.gm ? '高分局切片火了，评论区全是「开播吧」。人气 +。' : '你骂人的切片火了（喷子出圈）。人气 +。' } },
-  { id: 'stream_boom', weight: 4, when: (g) => g.stage === 'streamer', run: (g) => { const c = Math.round(500 + g.fans * 0.03) + irand(0, 800); g.cash += c; addFans(g, irand(200, 1000)); return `直播间爆了一晚，打赏 +${fmt(c)}，人气 +。` } },
-  { id: 'stream_crash', weight: 3, when: (g) => g.stage === 'streamer', run: (g) => { g.credit = Math.max(0, g.credit - 8); addFans(g, -Math.round(g.fans * 0.08)); return '直播翻车被挂到热榜。信誉 −8，掉了一批订阅，人气 −8%。' } },
-  { id: 'parents', weight: 3, when: (g) => g.stage === 'dropout' && !signed(g), run: (g) => { g.cash -= 1500; return '房租到期，爸妈不接电话。现金 −1500。' } },
+  { id: 'parents', weight: 3, when: (g) => g.stage === 'dropout', run: (g) => { g.cash -= 1500; return '房租到期，爸妈不接电话。现金 −1500。' } },
   { id: 'debt_call', weight: 4, when: (g) => g.cash < 0, run: (g) => { g.credit = Math.max(0, g.credit - 2); return `催收电话打到家里。负债 ${fmt(-g.cash)}，信誉 −2。` } },
   { id: 'gf', weight: 3, run: (g) => { modQuota(g, -8); return '谈恋爱了。额度永久 −8。' } },
   { id: 'gf_ow', weight: 2, run: (g) => { modQuota(g, 12); return '对象也玩守望。额度永久 +12。' } },
   { id: 'overtime', weight: 3, when: (g) => g.stage === 'worker', run: (g) => { modQuota(g, -10); g.cash += 3000; return '接了个加班项目。现金 +3000，额度永久 −10。' } },
   { id: 'back', weight: 2, when: (g) => g.age >= 22, run: (g) => { modQuota(g, -12); g.cash -= 800; return '腰突了。医生说少坐。额度永久 −12，医药费 −800。' } },
   { id: 'netbar', weight: 2, run: (g) => { modQuota(g, 10); return '搬到网吧楼上。额度永久 +10。' } },
-  { id: 'coach_gig', weight: 3, when: (g) => g.stage === 'coach', run: (g) => { const c = irand(1500, 3000); g.cash += c; return `带的队打完训练赛，教练奖金 +${c}。` } },
-]
-
-/* ———————————— 职业选手池（签约期间） ———————————— */
-export const CAREER_EVENTS: GameEvent[] = [
-  { id: 'scrim', weight: 8, run: (g) => { g.credit += 2; return '训练赛加练到凌晨。信誉 +2。' } },
-  { id: 'team_fight', weight: 6, run: (g) => { g.credit = Math.max(0, g.credit - 3); return '队内因为分锅吵了一架。信誉 −3。' } },
-  { id: 'stream_contract', weight: 1, run: (g) => { const c = irand(1500, 4000); g.cash += c; g.proIncome += c; return `直播平台的选手合约分成到账，现金 +${fmt(c)}。` } },
-  { id: 'fix_offer', weight: 3, run: (g) => { g.credit += 5; return '有人私聊让你打假赛，开价六位数。你截图发给了队长。信誉 +5。' } },
-  { id: 'coach_praise', weight: 4, run: (g) => { g.winStreak += 1; return '教练复盘时点名夸你。下一把气势拉满。' } },
-  { id: 'injury', weight: 2, run: (g) => { g.quotaLeft = Math.max(1, g.quotaLeft - 10); return '手腕腱鞘炎。本赛季额度 −10。' } },
-  { id: 'bootcamp', weight: 2, when: (g) => g.career.team?.partner === true, run: () => '二月去首尔集训。韩国队的训练赛让你知道差距在哪。' },
-  { id: 'fan', weight: 3, run: (g) => { g.credit += 3; addFans(g, irand(300, 1000)); return '路人局有人认出你的 ID，全场没人骂人。信誉 +3，人气 +。' } },
-  { id: 'owner_sponsor', weight: 4, when: (g) => g.career.team?.own === true, run: (g) => { const c = irand(5000, 15000); g.cash += c; g.proIncome += c; return `你跑来的赞助到账 +${fmt(c)}。老板的活。` } },
-  { id: 'owner_mate_quit', weight: 3, when: (g) => g.career.team?.own === true, run: (g) => { g.cash -= 5000; return '队友说家里不同意，退队了。违约金没收到，你还倒贴了 5000 找替补。' } },
-  { id: 'owner_fan_war', weight: 3, when: (g) => g.career.team?.own === true, run: (g) => { addFans(g, -Math.round(g.fans * 0.05)); return '你的粉丝和队友的粉丝在评论区打起来了。人气 −5%。' } },
 ]
 
 /* ———————————— 黑化 / 外挂 / 请帮手池 ———————————— */

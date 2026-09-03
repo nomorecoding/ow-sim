@@ -1,25 +1,22 @@
 import type { GameState, Identity, LogLine, MatchResult, MetaSave, Persona, RankModifier, TalentTier } from '../types'
 import {
   ACH_PER_HERO_POOL, BASE_QUOTA, BOOST_LANDED_CASH, BOOST_PER_MATCH, CP_PER_WIN, CP_SEASON_REWARD, DEBT_INTEREST,
-  DEFAULT_SPEED, GUN_COST, HELL_DEBT, HELL_RETURN_INCOME, HELPER_TIERS, INIT_CASH, INIT_CREDIT, INTL_NAME, MAJOR_NAME,
-  MOD_LABEL, OWN_TEAM_ROSTER_COST, OWN_TEAM_SPONSOR_PER_FAN, PERSONAS, PLACEMENT_GAMES, PRO_GROWTH_BONUS,
-  PRO_TALENT_FLOOR, QUOTA_MOD_MAX, QUOTA_MOD_MIN, REGULAR_WEEKS, RIVALRY_WEEKS, SEASONS_PER_YEAR, SOFT_RESET_EVERY,
-  STAGE_INFO, START_AGE_MAX, START_AGE_MIN, STREAM_INCOME_PER_FAN, TALENT_INFO, TALENT_ORDER, majorIndex, rankLabel,
+  DEFAULT_SPEED, GUN_COST, HELPER_TIERS, INIT_CASH, INIT_CREDIT, MAJOR_NAME,
+  MOD_LABEL, PERSONAS, PLACEMENT_GAMES, PRO_UNLOCK_SEASONS,
+  QUOTA_MOD_MAX, QUOTA_MOD_MIN, REGULAR_WEEKS, RIVALRY_WEEKS, SEASONS_PER_YEAR, SOFT_RESET_EVERY,
+  STAGE_INFO, START_AGE_MAX, START_AGE_MIN, TALENT_INFO, TALENT_ORDER, majorIndex, rankLabel,
 } from '../data/constants'
 import {
   applyRp, bumpConf, clamp, emptyRank, helperWinProb, irand, maybeEnableCloudMud, rand, rankScore, rpChange,
   scoreToRank, snapTowardCloudMud, temperedRpDelta, temperedShouldWin, tryFinishCloudMud, winProb, TOP_SCORE,
 } from './rank'
-import { BLACK_EVENTS, CAREER_EVENTS, CLEAN_EVENTS, DIRTY_EVENTS, LIFE_EVENTS, pickEvent } from '../data/events'
+import { BLACK_EVENTS, CLEAN_EVENTS, DIRTY_EVENTS, LIFE_EVENTS, addFans, pickEvent } from '../data/events'
 import { unlock } from './ach'
 import { ACHIEVEMENTS } from '../data/achievements'
 import { growthPoints, rollTalent } from '../data/talent'
-import { addFans, checkScouting, freshCareer, runStage, runTrial, salary, yearEnd } from './career'
 import { describeHelper } from './shop'
-import {
-  buildBannedEnding, buildBronzeEnding, buildHellReturnEnding, buildLandedEnding, buildRetireEnding, buildTopEnding,
-  buildWorldChampEnding,
-} from '../data/endings'
+import { freshPro } from './pro'
+import { buildBannedEnding, buildBronzeEnding, buildLandedEnding, buildTopEnding } from '../data/endings'
 
 const SAVE_KEY = 'ow-sim-meta-v4'
 const OLD_KEYS = ['ow-sim-meta-v3', 'ow-sim-meta-v2', 'ow-sim-meta-v1']
@@ -44,8 +41,8 @@ export function freshMeta(): MetaSave {
     age: irand(START_AGE_MIN, START_AGE_MAX),
     year: 1,
     seasonInYear: 1,
-    growth: { seasons: 0, heroPool: 0, gear: 0, training: 0 },
-    career: freshCareer(),
+    growth: { seasons: 0, heroPool: 0, gear: 0 },
+    pro: freshPro(),
     talentLog: { barrel: 0, normal: 0, something: 0, genius: 0, monster: 0 },
     cash: INIT_CASH,
     credit: INIT_CREDIT,
@@ -63,7 +60,6 @@ export function freshMeta(): MetaSave {
     lastResetSeason: 0,
     quotaMod: 0,
     stage: 'student',
-    careerBanned: false,
     boostEarnedTotal: 0,
     bansTotal: 0,
     accountNo: 1,
@@ -77,7 +73,13 @@ export function loadMeta(): MetaSave {
     if (raw) {
       const m = { ...fresh, ...JSON.parse(raw) as MetaSave }
       m.growth = { ...fresh.growth, ...m.growth }
-      m.career = { ...fresh.career, ...m.career }
+      m.pro = { ...fresh.pro, ...(m.pro ?? {}) }
+      m.pro.titles = { ...fresh.pro.titles, ...(m.pro.titles ?? {}) }
+      m.pro.log = []
+      m.pro.highlights = []
+      m.pro.choice = null
+      // 旧档兼容：不再有主播 / 教练阶段
+      if (!(m.stage in STAGE_INFO)) m.stage = 'free'
       m.talentLog = { ...fresh.talentLog, ...m.talentLog }
       m.dirty = { ...fresh.dirty, ...m.dirty }
       m.snooze = m.snooze ?? {}
@@ -132,11 +134,9 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
   const quota = Math.max(60, BASE_QUOTA + STAGE_INFO[stage].quota + meta.quotaMod + irand(-10, 15))
 
   const points = growthPoints(meta.growth, meta.age)
-  // 签约期间：战队训练环境 → 成长加成 + 硬兜底「有点东西」，职业选手在钻石–英杰浮动
-  const pro = meta.career.phase === 'signed'
   const talent = meta.debugTalent
     ? { tier: meta.debugTalent, mmr: irand(TALENT_INFO[meta.debugTalent].min, TALENT_INFO[meta.debugTalent].max) }
-    : rollTalent(pro ? points + PRO_GROWTH_BONUS : points, pro ? PRO_TALENT_FLOOR : undefined)
+    : rollTalent(points)
   meta.debugTalent = undefined
 
   const softReset = isSoftResetSeason(meta)
@@ -176,10 +176,8 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
     redBox: false,
     muteLeft: 0,
     muteCount: 0,
-    careerBanned: meta.careerBanned,
     dirty: { ...meta.dirty },
     cheatedThisSeason: false,
-    proIncome: 0,
     cashLow: meta.cashLow,
     reportStacks: 0,
     banned: false,
@@ -214,8 +212,6 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
     newAchievements: [],
     peakScore: 0,
     modCount: {},
-    career: JSON.parse(JSON.stringify(meta.career)),
-    scoutedThisSeason: false,
   }
   g.highlights.push({ cls: 'talent', text: `天赋【${ti.name}】` })
 
@@ -234,18 +230,6 @@ export function createSeason(meta: MetaSave, identity: Identity): GameState {
     meta.preorder = undefined
   }
   if (identity === 'boost') g.dirty.boostJobs++
-
-  // 试训
-  if (g.career.phase === 'scouted' && g.career.team) {
-    if (identity !== 'casual') {
-      g.career.phase = 'none'
-      g.career.team = undefined
-      logs.push({ cls: 'warn', text: '战队看到你在接代练单，试训取消。' })
-    } else runTrial(g, logs)
-  }
-  if (g.career.phase === 'signed') {
-    logs.push({ cls: 'career', text: `${g.career.team!.name} 选手。${stageOfSeason(g.seasonInYear) ? `本季末打 OWCS Stage ${stageOfSeason(g.seasonInYear)}。` : '本季是训练季，赛季末没有正赛。'}` })
-  }
   return g
 }
 
@@ -300,7 +284,6 @@ function modText(mods: RankModifier[]): string {
 /** 黑市提醒：首次 4 连败，或系统已识别你却还低于真实水平一个大段 */
 function maybeMarketHint(g: GameState) {
   if (g.marketPrompted || g.helper || g.identity !== 'casual' || g.phase === 'placement') return
-  if (g.career.phase === 'signed') return
   const sr = rankScore(g.rank)
   if (g.loseStreak >= 4) {
     g.marketPrompted = true
@@ -439,7 +422,6 @@ export function playMatch(g: GameState): MatchResult {
   advancePhase(g)
 
   if (g.phase !== 'placement') {
-    checkScouting(g, events)
     if (rand() < (rivalryOn ? 0.32 : 0.2)) {
       const ev = rollEvent(g, rivalryOn)
       if (ev) events.push(ev)
@@ -474,7 +456,6 @@ function finishPlacement(g: GameState, logs: LogLine[]) {
 function rollEvent(g: GameState, rivalryOn: boolean): LogLine | null {
   const r = rand()
   if (r < 0.1) return pickEvent(g, LIFE_EVENTS)
-  if (g.career.phase === 'signed' && r < 0.4) return pickEvent(g, CAREER_EVENTS)
   if ((g.identity === 'boost' || g.identity === 'cheat' || g.helper) && r < 0.45) return pickEvent(g, BLACK_EVENTS)
   const dirty = g.envPollution > 35 || g.dirtyThisSeason
   return pickEvent(g, rivalryOn || dirty ? DIRTY_EVENTS : CLEAN_EVENTS)
@@ -495,29 +476,17 @@ export function endSeasonEarly(g: GameState): boolean {
 }
 
 const INCOME_NAME: Record<GameState['stage'], string> = {
-  student: '生活费', worker: '工资', dropout: '', streamer: '零星打赏', free: '理财', coach: '教练工资',
+  student: '生活费', worker: '工资', dropout: '', free: '理财',
 }
 
-/** 赛季固定收支：按人生阶段 + 主播人气 + 主播队 + 负债利息 */
+/** 赛季固定收支：按人生阶段 + 负债利息 */
 function seasonFinance(g: GameState, logs: LogLine[]) {
   const info = STAGE_INFO[g.stage]
   const parts: string[] = []
-  let income = irand(info.income[0], info.income[1])
+  const income = irand(info.income[0], info.income[1])
   if (income && INCOME_NAME[g.stage]) parts.push(`${INCOME_NAME[g.stage]} +${income}`)
-  const own = g.career.phase === 'signed' && g.career.team?.own
-  if (g.stage === 'streamer' || own) {
-    const s = Math.round(g.fans * STREAM_INCOME_PER_FAN)
-    if (s) { income += s; parts.push(`直播 +${s}`) }
-  }
-  let expense = info.expense
+  const expense = info.expense
   if (expense) parts.push(`生活开销 −${expense}`)
-  if (own) {
-    const sp = Math.round(g.fans * OWN_TEAM_SPONSOR_PER_FAN)
-    income += sp
-    g.proIncome += sp
-    parts.push(`赞助 +${sp}`, `队友底薪 −${OWN_TEAM_ROSTER_COST}`)
-    expense += OWN_TEAM_ROSTER_COST
-  }
   g.cash += income - expense
   if (g.cash < 0) {
     const interest = Math.round(-g.cash * DEBT_INTEREST)
@@ -530,14 +499,13 @@ function seasonFinance(g: GameState, logs: LogLine[]) {
   if (parts.length) logs.push({ cls: g.cash < 0 ? 'warn' : 'sys', text: `赛季收支：${parts.join('，')}。现金 ${g.cash.toLocaleString()}${g.cash < 0 ? '（负债）' : ''}。` })
 }
 
-/** 人气：按峰值段位涨，主播 ×3；不播不打职业会慢慢掉 */
+/** 人气：按峰值段位涨；不打会慢慢掉 */
 function fansSeason(g: GameState, logs: LogLine[]) {
   const mi = majorIndex(scoreToRank(g.peakScore).major)
   let gain = [5, 10, 20, 40, 70, 120, 250, 700, 1500, 5000][mi] ?? 5
-  if (g.stage === 'streamer') gain *= 2
   if (g.bestStreak >= 10) gain += 200
   if (g.banned) gain = -Math.round(g.fans * 0.15)
-  else if (g.stage !== 'streamer' && g.career.phase !== 'signed') gain -= Math.round(g.fans * 0.05)
+  else gain -= Math.round(g.fans * 0.05)
   addFans(g, gain)
   if (Math.abs(gain) >= 100) logs.push({ cls: 'sys', text: `人气 ${gain >= 0 ? '+' : ''}${gain.toLocaleString()}（现在 ${g.fans.toLocaleString()}）。` })
 }
@@ -566,32 +534,6 @@ export function settleSeason(g: GameState): LogLine[] {
   // 收支与人气
   seasonFinance(g, logs)
   fansSeason(g, logs)
-
-  // 职业线
-  const cleanRun = g.dirty.boostJobs === 0 && g.dirty.hires === 0 && g.dirty.cheatSeasons === 0 && !g.cheatedThisSeason
-  if (g.career.phase === 'signed' && !g.banned) {
-    const pay = salary(g)
-    if (pay) {
-      g.cash += pay
-      g.proIncome += pay
-      logs.push({ cls: 'career', text: `底薪到账 +${pay.toLocaleString()}。` })
-    }
-    const st = stageOfSeason(g.seasonInYear)
-    if (st) {
-      runStage(g, st, logs)
-      const last = g.career.history[g.career.history.length - 1]
-      const worldChamp = last?.intl === 1 && g.career.phase === 'signed'
-      // 地狱归来：曾负债两万以下，干干净净，单季职业收入 30 万或国际赛冠军
-      if (cleanRun && g.cashLow <= HELL_DEBT && (worldChamp || g.proIncome >= HELL_RETURN_INCOME) && !g.achieved['hell_return']) {
-        unlock(g, 'hell_return')
-        g.ending = buildHellReturnEnding(g, g.cashLow, g.proIncome)
-      } else if (worldChamp) g.ending = buildWorldChampEnding(g, INTL_NAME[st])
-    }
-  }
-  if (g.seasonInYear === SEASONS_PER_YEAR && !g.banned) {
-    yearEnd(g, logs)
-    if (g.career.phase === 'retired' && g.career.retiredYear === g.year && !g.ending) g.ending = buildRetireEnding(g)
-  }
 
   const s = rankScore(g.rank)
   if (!g.ending && g.rank.major === 'top') g.ending = buildTopEnding(g)
@@ -627,12 +569,8 @@ export function settleSeason(g: GameState): LogLine[] {
   // 高光汇总
   if (g.bestStreak >= 6) g.highlights.push({ cls: 'win', text: `${g.bestStreak} 连胜` })
   if (g.worstStreak >= 6) g.highlights.push({ cls: 'lose', text: `${g.worstStreak} 连败` })
-  for (const e of g.events) if (e.cls === 'career' || e.cls === 'ban') g.highlights.push(e)
-  // 结算阶段的职业线大事：试训 / 签约 / 名次 / 国际赛 / 转会 / 解散 / 禁赛 / 退役
-  for (const l of logs) {
-    if (l.cls === 'ban' || l.cls === 'ending') g.highlights.push(l)
-    else if ((l.cls === 'career' || l.cls === 'warn') && /名次|【签约】|【试训】.*没签|【转会窗】|【解散】|【退役】|【假赛】|【组队】|【年末】/.test(l.text)) g.highlights.push(l)
-  }
+  for (const e of g.events) if (e.cls === 'ban') g.highlights.push(e)
+  for (const l of logs) if (l.cls === 'ban' || l.cls === 'ending') g.highlights.push(l)
   return logs
 }
 
@@ -653,12 +591,9 @@ export function commitSeason(g: GameState, meta: MetaSave) {
   meta.stage = g.stage
   meta.quotaMod = clamp(meta.quotaMod + g.quotaModDelta, QUOTA_MOD_MIN, QUOTA_MOD_MAX)
   meta.boostEarnedTotal += g.boostEarned
-  if (g.careerBanned) meta.careerBanned = true
-  meta.career = JSON.parse(JSON.stringify(g.career))
 
   // 成长
   meta.growth.seasons++
-  if (g.career.phase === 'signed' && stageOfSeason(g.seasonInYear)) meta.growth.training++
   meta.talentLog[g.talent] = (meta.talentLog[g.talent] ?? 0) + 1
   const order = TALENT_ORDER
   if (!meta.bestTalent || order.indexOf(g.talent) > order.indexOf(meta.bestTalent)) meta.bestTalent = g.talent
@@ -677,10 +612,6 @@ export function commitSeason(g: GameState, meta: MetaSave) {
     meta.lastRank = undefined
     meta.accountNo++
     meta.compPoints = 0
-    if (meta.career.phase === 'signed' || meta.career.phase === 'scouted') {
-      meta.career.phase = 'none'
-      meta.career.team = undefined
-    }
     meta.preorder = undefined
   } else {
     meta.lastRank = { ...g.rank }
@@ -691,6 +622,13 @@ export function commitSeason(g: GameState, meta: MetaSave) {
   if (meta.bansTotal >= 3) meta.achievements['banned_3'] = true
   const achCount = Object.keys(meta.achievements).filter((k) => ACHIEVEMENTS.some((a) => a.id === k)).length
   meta.growth.heroPool = Math.floor(achCount / ACH_PER_HERO_POOL)
+
+  // 职业模式解锁：触及宗师或打满 N 季
+  if (!meta.pro.unlocked && (meta.reachedGM || meta.seasonsPlayed >= PRO_UNLOCK_SEASONS)) {
+    meta.pro.unlocked = true
+    meta.achievements['pro_unlocked'] = true
+    g.newAchievements.push('pro_unlocked')
+  }
 
   if (g.ending) {
     meta.lastEndingId = g.ending.id

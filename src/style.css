@@ -145,6 +145,17 @@ b { font-weight: 600; color: var(--bone); }
 .btn-ghost { border-color: transparent; color: var(--bone-dim); padding: 8px 0; text-align: left; width: auto; }
 .btn-ghost:hover { color: var(--brass); border-color: transparent; }
 .btn-sm { width: auto; padding: 7px 14px; margin: 0; font-size: 0.74rem; }
+/* 职业模式入口：黄铜描边 + 衬线 */
+.btn-pro, .btn-gold {
+  color: var(--brass);
+  border-color: var(--brass);
+  font-family: var(--display);
+  letter-spacing: 0.18em;
+  background: linear-gradient(180deg, rgba(201, 165, 92, 0.08), transparent);
+}
+.btn-pro:hover, .btn-gold:hover { background: rgba(201, 165, 92, 0.16); }
+/* 抉择按钮的副标题 */
+.btn-sub { display: block; font-size: 0.7rem; letter-spacing: 0.06em; opacity: 0.6; margin-top: 3px; font-family: var(--body); font-weight: 400; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* ———— 段位 ———— */

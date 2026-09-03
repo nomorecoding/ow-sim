@@ -1,23 +1,26 @@
 import './style.css'
 import type { GameState, Identity, LogLine, RankState } from './types'
 import {
-  BOOST_JOBS, DEFAULT_SPEED, GEAR_LEVELS, GUN_COST, HELPER_PACK_GAMES, HELPER_TIERS, INTL_NAME, MAJOR_NAME, MIN_SPEED,
-  OWN_TEAM_MIN_FANS, OWN_TEAM_ROSTER_COST, OWN_TEAM_SETUP_COST, PRO_UNLOCK_SEASONS, RANK_COLOR_CLASS, SOFT_RESET_EVERY,
+  BOOST_JOBS, DEFAULT_SPEED, FORM_INFO, FORM_ORDER, GEAR_LEVELS, GUN_COST, HELPER_PACK_GAMES, HELPER_TIERS, INTL_NAME,
+  MAJOR_NAME, MIN_SPEED, PRO_START_AGE, PRO_UNLOCK_SEASONS, RANK_COLOR_CLASS, SOFT_RESET_EVERY,
   STAGE_INFO, TALENT_INFO, TALENT_ORDER, majorIndex,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { growthPoints, talentProbs } from './data/talent'
 import {
   buyGoldGun, buyJadeGun, commitSeason, createSeason, endSeasonEarly, freshMeta, isSoftResetSeason, labelIdentity,
-  loadMeta, playMatch, stageOfSeason, writeMeta,
+  loadMeta, playMatch, writeMeta,
 } from './sim/engine'
 import { clamp, helperOdds as oddsFn, isLateSeason, rankScore, scoreToRank } from './sim/rank'
 import {
   buyGear, cancelPreorder, describeHelper, enableCheat, helperCost, hireBooster, hireEscort, preorderHelper, purifyEnv,
   takeBoostJob,
 } from './sim/shop'
-import { applyTrial, canApply, canFormTeam, careerLabel, exposureP, formOwnTeam, giveUpDream, proUnlocked } from './sim/career'
-import { STREAMER_FANS, becomeStreamer, canStream, pendingOffers, snoozeOffer } from './sim/offers'
+import {
+  beginYear, canStartCareer, commitYear, exposureP, formProbs, proChoose, proStep, proUnlocked, startCareer, teamOf,
+  teamRating, yearInProgress,
+} from './sim/pro'
+import { pendingOffers, snoozeOffer, takeJob } from './sim/offers'
 import { rehire } from './sim/shop'
 import type { Offer } from './sim/offers'
 
@@ -119,8 +122,7 @@ function refreshHud() {
   const pct = ((g.quotaMax - g.quotaLeft) / Math.max(1, g.quotaMax)) * 100
   set('hud-meta', `<span>S<span class="num">${g.season}</span> · 第<span class="num">${g.year}</span>年第<span class="num">${g.seasonInYear}</span>季</span><span><span class="num">${g.age}</span> 岁 · ${STAGE_INFO[g.stage].name}</span><span>${phaseLabel(g)} · ${playerTag(g)}</span>`)
   set('hud-rank', g.phase === 'placement' ? `<span class="sys" style="font-size:0.6em;letter-spacing:0.3em">定级中</span>` : rankHtml(g.rank))
-  const career = g.career.phase !== 'none' ? ` · <span class="career">${careerLabel(g.career)}</span>` : ''
-  set('hud-persona', `${talentBadge(g.talent)}&nbsp;&nbsp;<span class="tip">【${g.persona.name}】${g.persona.tagline} · ${labelIdentity(g.identity)}${career}</span>`)
+  set('hud-persona', `${talentBadge(g.talent)}&nbsp;&nbsp;<span class="tip">【${g.persona.name}】${g.persona.tagline} · ${labelIdentity(g.identity)}</span>`)
   const helper = g.helper && g.helper.left > 0
     ? `<span>${g.helper.kind === 'boost' ? '代练' : `${g.helper.count} 陪 1`} 剩 <b class="num">${g.helper.left}</b></span>`
     : ''
@@ -140,10 +142,10 @@ function showSheet(id: string) {
   if (m) m.hidden = false
 }
 function hideSheets() {
-  for (const id of ['pause-mask', 'market-mask', 'helper-mask']) { const m = $(id); if (m) m.hidden = true }
+  for (const id of ['pause-mask', 'market-mask', 'helper-mask', 'pro-pause', 'pro-choice']) { const m = $(id); if (m) m.hidden = true }
 }
 
-/* ———————————— 邀约弹窗：主动把玩家领进主播 / 职业 / 负债抉择 ———————————— */
+/* ———————————— 邀约弹窗：职业模式解锁 / 负债抉择 ———————————— */
 
 /** 逐个弹邀约；只要处理过至少一条，结束后调用 after（刷新页面） */
 function showOffers(after: () => void, handled = false) {
@@ -169,6 +171,7 @@ function showOffers(after: () => void, handled = false) {
       mask.remove()
       if (r === 'market') { backFrom = 'home'; renderMarket(); return }
       if (r === 'play') { start('casual'); return }
+      if (r === 'pro') { game = null; renderPro(); return }
       if (r && typeof r === 'object') toast(r.text)
       // 递归弹下一条
       showOffers(after, true)
@@ -187,46 +190,29 @@ function toast(text: string) {
   window.setTimeout(() => { t.classList.remove('show'); window.setTimeout(() => t.remove(), 400) }, 4200)
 }
 
-/* ———————————— 人生路：三条线的进度一眼看清 ———————————— */
+/* ———————————— 两条线：天梯成长 / 职业模式 ———————————— */
 
 function roadmap() {
-  const c = meta.career
-  const bar = (p: number, cls = '') => `<div class="tal-bar road-bar"><i class="${cls}" style="width:${clamp(p * 100, 0, 100)}%"></i></div>`
-  // 职业
+  const p = meta.pro
+  const bar = (v: number, cls = '') => `<div class="tal-bar road-bar"><i class="${cls}" style="width:${clamp(v * 100, 0, 100)}%"></i></div>`
   let pro: string
   let proBar = ''
-  if (c.phase === 'banned') pro = '<span class="ban">终身禁赛 · 永闭</span>'
-  else if (c.dreamGiven) pro = '已放弃（找了正业）'
-  else if (c.phase === 'signed') { pro = `<span class="career">${c.team?.name}</span> · 第 2 / 4 / 6 季末打 Stage · 年度积分 ${c.yearScore}`; proBar = bar(Math.min(1, c.yearScore / 16), 'tal-3') }
-  else if (c.phase === 'scouted') { pro = `<span class="career">下季开局试训 · ${c.team?.name}</span>`; proBar = bar(0.9, 'tal-3') }
-  else if (c.phase === 'retired') pro = `退役 · ${careerLabel(c)}`
+  if (p.lifetimeBan) pro = '<span class="ban">终身禁赛 · 本存档永闭</span>'
+  else if (p.active) { pro = `<span class="career">${teamOf(p.teamId)?.name ?? '自由人'}</span> · ${p.age} 岁 · 第 ${p.year + 1} 年`; proBar = bar(Math.min(1, p.yearsPlayed / 10), 'tal-3') }
+  else if (proUnlocked(meta)) pro = `<span class="win">已解锁</span>${p.runs ? ` · 已打 ${p.runs} 段生涯` : ' · 单独一条线，点下面进去'}`
   else {
-    const p = meta.reachedGM ? 1 : Math.min(1, meta.seasonsPlayed / PRO_UNLOCK_SEASONS)
-    pro = p >= 1 ? '<span class="win">试训已解锁 · 等私信或去「职业路」报名</span>' : `试训解锁：触及宗师，或打满 ${PRO_UNLOCK_SEASONS} 季（${meta.seasonsPlayed}/${PRO_UNLOCK_SEASONS}）`
-    proBar = bar(p, 'tal-2')
+    const v = Math.min(1, meta.seasonsPlayed / PRO_UNLOCK_SEASONS)
+    pro = `解锁：触及宗师，或打满 ${PRO_UNLOCK_SEASONS} 季（${meta.seasonsPlayed}/${PRO_UNLOCK_SEASONS}）`
+    proBar = bar(v, 'tal-2')
   }
-  // 主播
-  let st: string
-  let stBar: string
-  if (meta.stage === 'streamer') {
-    const own = c.team?.own
-    st = own ? `<span class="career">${c.team!.name}</span> · 老板兼首发` : `主播 · 人气 ${fmt(meta.fans)} / ${fmt(OWN_TEAM_MIN_FANS)} 组队`
-    stBar = bar(own ? 1 : meta.fans / OWN_TEAM_MIN_FANS, 'tal-3')
-  } else {
-    const ok = canStream(meta).ok
-    st = ok ? '<span class="win">可以开播 · 等 MCN 私信或在「职业路」点开播</span>' : `开播门槛：人气 ${fmt(meta.fans)} / ${fmt(STREAMER_FANS)}，或触及宗师`
-    stBar = bar(Math.min(1, meta.fans / STREAMER_FANS), 'tal-2')
-  }
-  // 成长
   const pts = growthPoints(meta.growth, meta.age)
   const achN = Object.keys(meta.achievements).filter((k) => ACH_MAP[k]).length
   const toPool = 5 - (achN % 5)
   return `<div class="section">
-    <div class="label">人生路</div>
+    <div class="label">两条线</div>
     <div class="road">
+      <div class="road-row"><span class="road-k">天梯</span><div>成长 ${pts} · 再 ${toPool} 个成就英雄池 +1 · ${meta.age} 岁${meta.age >= 25 ? ' <span class="warn">年龄开始抵消成长</span>' : ''}${bar(Math.min(1, pts / 40), 'tal-1')}</div></div>
       <div class="road-row"><span class="road-k">职业</span><div>${pro}${proBar}</div></div>
-      <div class="road-row"><span class="road-k">主播</span><div>${st}${stBar}</div></div>
-      <div class="road-row"><span class="road-k">成长</span><div>成长 ${pts} · 再 ${toPool} 个成就英雄池 +1 · ${meta.age} 岁${meta.age >= 25 ? ' <span class="warn">年龄开始抵消成长</span>' : ''}${bar(Math.min(1, pts / 40), 'tal-1')}</div></div>
     </div>
   </div>`
 }
@@ -311,7 +297,7 @@ function talentPanel() {
   return `<div class="section">
     <div class="row" style="border-bottom:0;padding:0 0 6px"><span class="label" style="margin:0">本季天赋概率</span><span class="tip">成长 <b class="num">${pts}</b></span></div>
     ${rows}
-    <p class="tip" style="margin:12px 0 0">成长 = 赛季经验 ${Math.min(15, Math.floor(gr.seasons / 2))} · 英雄池 ${gr.heroPool} · 设备 ${gr.gear} · 战队训练 ${Math.min(6, gr.training)}${agePen ? ` · <span class="warn">年龄 −${agePen}</span>` : ''}<br>天赋只决定本季的隐藏真实水平；段位靠系统慢慢识别。</p>
+    <p class="tip" style="margin:12px 0 0">成长 = 赛季经验 ${Math.min(15, Math.floor(gr.seasons / 2))} · 英雄池 ${gr.heroPool} · 设备 ${gr.gear}${agePen ? ` · <span class="warn">年龄 −${agePen}</span>` : ''}<br>天赋只决定本季的隐藏真实水平；段位靠系统慢慢识别。</p>
   </div>`
 }
 
@@ -322,29 +308,27 @@ function renderHome() {
   const achCount = Object.keys(meta.achievements).filter((k) => ACH_MAP[k]).length
   const last = meta.lastRank
   const lastHtml = last ? rankInline(last) : `<span class="sys">${meta.seasonsPlayed ? '新号' : '未定级'}</span>`
-  const st = stageOfSeason(meta.seasonInYear)
-  const c = meta.career
   const notes: string[] = []
-  if (c.phase !== 'none' || c.dreamGiven) notes.push(`<span class="career">${careerLabel(c)}</span>${c.history.length ? ` · ${c.history.length} 个 Stage` : ''}${c.worldCup ? ` · 国家队 ×${c.worldCup}` : ''}`)
-  notes.push(st ? `本季末 OWCS Stage ${st}` : '本季无正赛')
   if (isSoftResetSeason(meta)) notes.push('<span class="temper">本季软重置</span>')
   if (meta.preorder) notes.push(`<span class="warn">已预订 ${describeHelper(meta.preorder)}</span>`)
   if (meta.bansTotal) notes.push(`封号 ${meta.bansTotal} 次`)
   if (meta.envPollution) notes.push(`污染 ${meta.envPollution}`)
+  if (meta.dirty.boostJobs + meta.dirty.hires + meta.dirty.cheatSeasons > 0) notes.push(`黑历史 · 代练单 ${meta.dirty.boostJobs} · 请人 ${meta.dirty.hires} · 开挂 ${meta.dirty.cheatSeasons} 季`)
   const debt = meta.cash < 0
   const debtSection = debt ? `<div class="section">
       <div class="label" style="color:var(--clay)">负债 ${fmt(-meta.cash)} · 三条路</div>
-      <p class="tip" style="margin:0 0 10px">每季利息 6%。负债越深，家里催得越紧：签约选手年末更可能被劝退，主播队会解散。</p>
+      <p class="tip" style="margin:0 0 10px">每季利息 6%。</p>
       <div class="menu">
-        ${c.dreamGiven || c.phase === 'signed' ? '' : `<button class="menu-row" id="btn-job"><span class="name">找份正业<span class="odds">工资稳，放弃职业梦</span></span><span class="leader"></span><span class="price">上班</span></button>`}
-        <button class="menu-row danger" id="btn-debt-market"><span class="name">去黑市接单<span class="odds">来钱快，进黑历史，签约后可能终身禁赛</span></span><span class="leader"></span><span class="price">风险</span></button>
-        <button class="menu-row" id="btn-debt-keep"><span class="name">咬牙坚持<span class="odds">干干净净打上去：负债后单季职业收入 30 万或国际赛冠军 → 地狱归来</span></span><span class="leader"></span><span class="price">追梦</span></button>
+        ${meta.stage === 'worker' ? '' : `<button class="menu-row" id="btn-job"><span class="name">找份正业<span class="odds">工资稳，额度少</span></span><span class="leader"></span><span class="price">上班</span></button>`}
+        <button class="menu-row danger" id="btn-debt-market"><span class="name">去黑市接单<span class="odds">来钱快，进黑历史</span></span><span class="leader"></span><span class="price">风险</span></button>
+        <button class="menu-row" id="btn-debt-keep"><span class="name">咬牙坚持<span class="odds">干干净净打上去</span></span><span class="leader"></span><span class="price">继续</span></button>
       </div>
     </div>` : ''
 
-  const banBanner = c.phase === 'banned'
-    ? `<div class="mute-line on" style="margin-bottom:14px"><span>本存档职业线已永闭 · 终身禁赛</span><small>${c.banReason ?? ''} 天梯、黑市、成就照常。想再走职业路只能删档重来（成就保留）。</small></div>`
+  const banBanner = meta.pro.lifetimeBan
+    ? `<div class="mute-line on" style="margin-bottom:14px"><span>本存档职业模式已永闭 · 终身禁赛</span><small>天梯、黑市、成就照常。想再打职业只能删档重来（成就保留）。</small></div>`
     : ''
+  const proLabel = meta.pro.lifetimeBan ? '职业模式 · 永闭' : !proUnlocked(meta) ? `职业模式 · 未解锁（${meta.seasonsPlayed}/${PRO_UNLOCK_SEASONS} 季或触及宗师）` : meta.pro.active ? `职业模式 · ${teamOf(meta.pro.teamId)?.name ?? '自由人'} · ${meta.pro.age} 岁` : '职业模式 · 开始一段生涯'
   app.innerHTML = `<div class="reveal">
     <h1>守望天梯人生</h1>
     <div class="sub">天赋随机 · 系统控分 · 云泥之隔</div>
@@ -370,9 +354,9 @@ function renderHome() {
     ${roadmap()}
     ${talentPanel()}
     <div class="section" style="border-top:0;padding-top:6px">
-      <button class="btn btn-primary" id="btn-casual">开局 · 摇天赋</button>
-      ${meta.dirty.boostJobs > 0 && meta.career.phase !== 'signed' ? '<button class="btn btn-warn" id="btn-boost">开局 · 代练号</button>' : ''}
-      <button class="btn" id="btn-career">职业路 · ${careerLabel(c)}</button>
+      <button class="btn btn-primary" id="btn-casual">天梯 · 开局摇天赋</button>
+      ${meta.dirty.boostJobs > 0 ? '<button class="btn btn-warn" id="btn-boost">天梯 · 代练号开局</button>' : ''}
+      <button class="btn ${proUnlocked(meta) && !meta.pro.lifetimeBan ? 'btn-pro' : ''}" id="btn-career" ${proUnlocked(meta) ? '' : 'disabled'}>${proLabel}</button>
       <div class="grid-2">
         <button class="btn" id="btn-shop">商店</button>
         <button class="btn btn-warn" id="btn-market">黑市${meta.preorder ? ' · 已预订' : ''}</button>
@@ -389,15 +373,14 @@ function renderHome() {
   </div>`
   $('btn-casual')!.onclick = () => start('casual')
   $('btn-boost')?.addEventListener('click', () => start('boost'))
-  $('btn-career')!.onclick = renderCareer
+  $('btn-career')!.onclick = renderPro
   $('btn-shop')!.onclick = () => { backFrom = 'home'; renderShop() }
   $('btn-market')!.onclick = () => { backFrom = 'home'; renderMarket() }
   $('btn-job')?.addEventListener('click', () => {
-    if (!confirm('找份正业：转为上班，每季有工资；以后战队不会再联系你（本存档职业梦到此为止，主播队除外）。确定？')) return
-    const l = giveUpDream(meta)
+    const l = takeJob(meta)
     writeMeta(meta)
     renderHome()
-    alert(l.text)
+    toast(l.text)
   })
   $('btn-debt-market')?.addEventListener('click', () => { backFrom = 'home'; renderMarket() })
   $('btn-debt-keep')?.addEventListener('click', () => start('casual'))
@@ -405,8 +388,8 @@ function renderHome() {
   $('btn-about')!.onclick = renderAbout
   $('btn-settings')!.onclick = renderSettings
   $('btn-wipe')!.onclick = () => {
-    if (!confirm('删档重来：年龄、现金、段位、生涯、黑历史全部清零，成就保留。确定？')) return
-    Object.assign(meta, freshMeta(), { speed: meta.speed, manual: meta.manual, achievements: meta.achievements })
+    if (!confirm('删档重来：年龄、现金、段位、职业生涯、黑历史全部清零，成就保留。确定？')) return
+    Object.assign(meta, freshMeta(), { speed: meta.speed, manual: meta.manual, achievements: meta.achievements, endings: meta.endings })
     writeMeta(meta)
     renderHome()
   }
@@ -435,6 +418,11 @@ function mountDebug() {
     ['清弹窗记忆', () => { meta.snooze = {}; meta.seen = {} }],
     ['年龄 +3', () => { meta.age += 3 }],
     ['季内跳到末尾', () => { if (game) game.quotaLeft = Math.min(game.quotaLeft, 3) }],
+    ['解锁职业模式', () => { meta.pro.unlocked = true }],
+    ['职业成长 +10', () => { meta.pro.growth += 10 }],
+    ['职业人气 +5万', () => { meta.pro.fame += 50000 }],
+    ['职业年龄 +5', () => { if (meta.pro.active) meta.pro.age += 5 }],
+    ['解除终身禁赛', () => { meta.pro.lifetimeBan = false; meta.pro.banReason = undefined }],
   ]
   d.innerHTML = `<div class="debug-title">调试</div>${acts.map((a, i) => `<button data-d="${i}">${a[0]}</button>`).join('')}`
   document.body.appendChild(d)
@@ -442,7 +430,7 @@ function mountDebug() {
     b.onclick = () => {
       acts[Number(b.dataset.d)][1]()
       writeMeta(meta)
-      if (game) { refreshHud() } else renderHome()
+      if (game) { refreshHud() } else if (!yearInProgress()) renderHome()
       toast(`调试：${acts[Number(b.dataset.d)][0]}`)
     }
   })
@@ -460,86 +448,279 @@ function renderAchievements() {
     const got = !!meta.achievements[a.id]
     return `<div class="ach-row ${got ? 'got' : ''} ${a.honor ? 'pro' : ''}">
       <b>${got ? a.name : '· · ·'}</b>
-      <span>${got || !a.honor ? a.desc : '职业线荣誉'}</span>
+      <span>${got || !a.honor ? a.desc : '职业模式荣誉'}</span>
     </div>`
   }).join('')
   const ends = Object.entries(meta.endings)
   const top = pageTop(`成就 <span class="num" style="font-size:0.9em">${Object.keys(meta.achievements).filter((k) => ACH_MAP[k]).length}</span><span style="color:var(--bone-faint)">/${ACHIEVEMENTS.length}</span>`, renderHome)
   app.innerHTML = `<div class="reveal">
     ${top.html}
-    <p class="tip">每 5 个成就 → 英雄池 +1 → 天赋分布上移。成就不加胜率。✦ 为职业线荣誉。</p>
+    <p class="tip">每 5 个成就 → 英雄池 +1 → 天赋分布上移。成就不加胜率。✦ 为职业模式荣誉。</p>
     <div class="section">${rows}</div>
-    ${ends.length ? `<div class="section"><div class="label">结局收集</div><p class="tip">${ends.map(([k, n]) => `${k} ×${n}`).join(' · ')}</p></div>` : ''}
+    ${ends.length ? `<div class="section"><div class="label">结局收集</div><p class="tip">${ends.map(([k, n]) => `${ENDING_NAME[k] ?? k} ×${n}`).join(' · ')}</p></div>` : ''}
   </div>`
   top.bind()
 }
 
-/* ———————————— 职业路 ———————————— */
+/* ———————————— 职业模式 ———————————— */
 
-function renderCareer() {
-  const c = meta.career
-  const top = pageTop('职业路', renderHome)
-  const apply = canApply(meta)
-  const form = canFormTeam(meta)
-  const stream = canStream(meta)
-  const expo = exposureP(meta.dirty)
+const ENDING_NAME: Record<string, string> = {
+  top500: '顶尖 500', banned: '封号', landed: '上岸', bronze: '地心探索',
+  lifetime_ban: '终身禁赛', fix_ruin: '那笔钱', hell_return: '地狱归来', quit: '回家', legend: '一代传奇',
+  world_champion: '世界冠军', regional_king: '赛区名将', evergreen: '常青树', bench: '板凳', journeyman: '打工人',
+}
+for (const m of Object.keys(MAJOR_NAME) as Array<keyof typeof MAJOR_NAME>) ENDING_NAME[`cloudmud_${m}`] = `云泥之隔 · ${MAJOR_NAME[m]}`
+
+let proTimer: number | null = null
+let proPaused = false
+let proShownLog = 0
+let proShownHl = 0
+let proCommitted = false
+
+function stopProTimer() {
+  if (proTimer != null) { clearTimeout(proTimer); proTimer = null }
+}
+
+function formBadge(f: keyof typeof FORM_INFO) {
+  const fi = FORM_INFO[f]
+  return `<span class="talent-badge ${fi.cls}">${fi.name}</span>`
+}
+
+/** 本年状态档概率（职业模式的天赋面板） */
+function formPanel(age: number) {
+  const p = meta.pro
+  const probs = formProbs(p.growth, age)
+  const rows = FORM_ORDER.map((f) => {
+    const fi = FORM_INFO[f]
+    return `<div class="tal-row">
+      <div><span class="talent-badge ${fi.cls}">${fi.name}</span><div class="tal-range">实力 ${fi.min}–${fi.max}</div></div>
+      <div class="tal-bar"><i class="${fi.cls}" style="width:${clamp(probs[f] * 1.6, 1, 100)}%"></i></div>
+      <span class="num">${probs[f]}%</span>
+      <span class="tal-n num"></span>
+    </div>`
+  }).join('')
+  return `<div class="section">
+    <div class="row" style="border-bottom:0;padding:0 0 6px"><span class="label" style="margin:0">本年状态概率</span><span class="tip">职业成长 <b class="num">${p.growth}</b> · ${age} 岁${age >= 25 ? ' <span class="warn">年龄开始抵消</span>' : ''}</span></div>
+    ${rows}
+    <p class="tip" style="margin:12px 0 0">每年开局摇一档状态，决定本年个人实力；成绩 = 队伍底子 × 0.55 + 你 × 0.45。职业成长跨生涯累积，只改分布。</p>
+  </div>`
+}
+
+function historyLedger(limit = 12) {
+  const hist = meta.pro.history.slice().reverse().slice(0, limit)
+  if (!hist.length) return '<p class="tip">还没有正赛记录。</p>'
+  return `<div class="ledger">${hist.map((r) => `<div class="row">
+    <span class="k">第 ${r.year} 年 S${r.stage} · ${r.team}</span>
+    <span class="v">${r.place ? `地区第 <b class="num">${r.place}</b>` : r.note ?? '预选出局'}${r.intl ? ` · ${INTL_NAME[r.stage]} 第 <b class="num">${r.intl}</b>` : ''}${r.prize ? ` · <span class="num">+${fmt(r.prize)}</span>` : ''}${r.bench ? ' <span class="tip">替补</span>' : ''}</span>
+  </div>`).join('')}</div>`
+}
+
+function renderPro() {
+  stopTimer()
+  stopProTimer()
+  game = null
+  const p = meta.pro
+  const top = pageTop('职业模式', renderHome)
+  const chk = canStartCareer(meta)
+  const t = teamOf(p.teamId)
+  const titles = `地区冠军 ${p.titles.regional} · 国际赛前二 ${p.titles.intl}${p.titles.world ? ` · 国际赛冠军 ${p.titles.world}` : ''}${p.titles.worldCup ? ` · 国家队 ${p.titles.worldCup}` : ''}`
   const d = meta.dirty
-  const dirtyText = d.boostJobs + d.hires + d.cheatSeasons === 0
+  const expo = exposureP(meta)
+  const dirtyText = d.boostJobs + d.hires + d.cheatSeasons + p.fixes === 0
     ? '<span class="win">干净。背调翻不出东西。</span>'
-    : `<span class="warn">代练单 ${d.boostJobs} · 请人 ${d.hires} 套 · 开挂 ${d.cheatSeasons} 季 → 每次签约 / 正赛被翻出来的概率 ${Math.round(expo * 100)}%。翻出来就是终身禁赛。</span>`
-  const hist = c.history.slice().reverse()
-  const histRows = hist.length
-    ? hist.map((r) => `<div class="row">
-        <span class="k">第 ${r.year} 年 S${r.stage} · ${r.team}</span>
-        <span class="v">${r.place ? `地区第 <b class="num">${r.place}</b>` : r.note ?? '预选淘汰'}${r.intl ? ` · ${INTL_NAME[r.stage]} 第 <b class="num">${r.intl}</b>` : ''}${r.prize ? ` · <span class="num">+${fmt(r.prize)}</span>` : ''}${r.note && r.place ? ` <span class="tip">${r.note}</span>` : ''}</span>
-      </div>`).join('')
-    : '<p class="tip">还没有正赛记录。</p>'
-  const team = c.team
-  const status = c.phase === 'banned'
-    ? `<p class="tip" style="color:var(--clay)">${c.banReason ?? ''} 本存档职业线永闭，只能删档重来。</p>`
-    : c.phase === 'signed' && team
-      ? `<p class="tip">${team.own ? `你的队。队伍底子 <b class="num">${team.rating}</b>，人气赞助每季 +${fmt(Math.round(meta.fans * 0.3))}，队友底薪每季 −${fmt(OWN_TEAM_ROSTER_COST)}，奖金双份。` : `${team.partner ? '合作战队' : '普通队'}，队伍底子 <b class="num">${team.rating}</b>。签约 ${c.seasonsSigned} 季，本年度积分 ${c.yearScore}。`}</p>`
-      : c.phase === 'scouted'
-        ? `<p class="tip">下赛季开局：${team?.name ?? ''} 三场 BO3 训练赛。${expo > 0 ? '过了还有背调。' : ''}</p>`
-        : `<p class="tip">${apply.ok ? '试训资格已解锁。' : apply.why}</p>`
+    : `<span class="warn">代练单 ${d.boostJobs} · 请人 ${d.hires} 套 · 开挂 ${d.cheatSeasons} 季${p.fixes ? ` · 假赛 ${p.fixes}` : ''} → 每次背调 / 赛前审查被翻出来的概率 ${Math.round(expo * 100)}%。</span>`
 
-  app.innerHTML = `<div class="reveal">
-    ${top.html}
-    <div class="dossier">
-      <div class="cell"><div class="label">身份</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5" class="career">${careerLabel(c)}</div><small>${meta.age} 岁 · ${STAGE_INFO[meta.stage].name}</small></div>
-      <div class="cell"><div class="label">人气</div><div class="num">${fmt(meta.fans)}</div><small>组队门槛 ${fmt(OWN_TEAM_MIN_FANS)}</small></div>
-      <div class="cell"><div class="label">荣誉</div><div class="num">${c.history.filter((r) => r.place === 1).length}<span style="font-size:0.5em;color:var(--bone-dim)"> 冠</span></div><small>国际赛 ${c.history.filter((r) => r.intl > 0).length} · 国家队 ${c.worldCup}</small></div>
-    </div>
-    <div class="section">
-      <div class="label">现状</div>
-      ${status}
-      <p class="tip" style="margin-top:6px">背调档案：${dirtyText}</p>
-    </div>
-    <div class="section">
-      <div class="label">路径</div>
-      <div class="menu">
-        <button class="menu-row" id="btn-apply" ${apply.ok ? '' : 'disabled'}><span class="name">报名试训<span class="odds">${proUnlocked(meta) ? '已解锁' : `触及宗师或打满 ${PRO_UNLOCK_SEASONS} 季解锁`}</span></span><span class="leader"></span><span class="price">下季开局</span></button>
-        <button class="menu-row" id="btn-stream" ${stream.ok ? '' : 'disabled'}><span class="name">开播 · 转型主播<span class="odds">${stream.ok ? '直播收入按人气算，人气涨速翻倍' : stream.why}</span></span><span class="leader"></span><span class="price">免费</span></button>
-        <button class="menu-row" id="btn-form" ${form.ok ? '' : 'disabled'}><span class="name">组主播队<span class="odds">人气 ≥ ${fmt(OWN_TEAM_MIN_FANS)} · 老板兼首发 · 从预选打起</span></span><span class="leader"></span><span class="price">${fmt(OWN_TEAM_SETUP_COST)}</span></button>
+  let body: string
+  if (p.lifetimeBan) {
+    body = `<div class="section ending-card"><h2>终身禁赛</h2><div class="tip">${p.banReason ?? ''}</div><div class="verse">本存档职业模式到此为止。天梯、黑市、成就照常。想再打职业只能删档重来（成就保留）。</div></div>`
+  } else if (!chk.ok) {
+    body = `<div class="section"><div class="label">未解锁</div><p class="tip" style="color:var(--bone)">${chk.why}</p><p class="tip">职业模式是单独的一条线：${PRO_START_AGE} 岁起步，一年一局，三个 Stage 逐场滚动，年末转会窗自己选队。天梯里的现金、人气、黑历史都会带过去。</p></div>${formPanel(PRO_START_AGE)}`
+  } else if (!p.active) {
+    body = `${p.ending ? `<div class="section ending-card"><h2>${p.ending.title}</h2><div class="tip">${p.ending.rankLabel}</div>${p.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}</div>` : ''}
+      <div class="section">
+        <div class="label">开始</div>
+        <p class="tip" style="color:var(--bone)">${PRO_START_AGE} 岁，自由人。年初会有队来找你，签哪家你定。${p.runs ? `这是第 ${p.runs + 1} 段生涯，职业成长 ${p.growth} 会带上。` : ''}</p>
+        <p class="tip" style="margin-top:6px">背调档案：${dirtyText}</p>
+        <button class="btn btn-primary" id="btn-start-career" style="margin-top:12px">开始生涯 · ${PRO_START_AGE} 岁</button>
       </div>
-      <p class="tip" style="margin-top:8px">${form.ok || c.phase === 'signed' ? '' : form.why}</p>
-      <p class="tip">正赛：每年 3 个 Stage（第 2 / 4 / 6 季末）。公开预选 8 队瑞士轮 → 6 队循环 → 4 队双败。地区前 2 出线 Champions Clash / 年中赛 · EWC / 世界总决赛。花边：队友假赛全队取消资格、宫斗、主力被挖、老板撤资解散。</p>
-    </div>
-    <div class="section">
-      <div class="label">履历</div>
-      <div class="ledger">${histRows}</div>
-    </div>
-    <div class="msg" id="career-msg"></div>
-  </div>`
-  top.bind()
-  const done = (l: LogLine) => { writeMeta(meta); renderCareer(); $('career-msg')!.textContent = l.text }
-  $('btn-apply')!.onclick = () => done(applyTrial(meta))
-  $('btn-stream')!.onclick = () => done(becomeStreamer(meta))
-  $('btn-form')!.onclick = () => {
-    if (!confirm(`组主播队：现金 −${fmt(OWN_TEAM_SETUP_COST)}，之后每季付队友底薪 ${fmt(OWN_TEAM_ROSTER_COST)}。队伍成绩差、账上负债太深会解散。确定？`)) return
-    done(formOwnTeam(meta))
+      ${formPanel(PRO_START_AGE)}
+      ${p.history.length ? `<div class="section"><div class="label">上一段生涯</div>${historyLedger(8)}</div>` : ''}`
+  } else {
+    body = `<div class="dossier">
+        <div class="cell"><div class="label">年龄</div><div class="num">${p.age}</div><small>第 ${p.year + 1} 年</small></div>
+        <div class="cell"><div class="label">队伍</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5" class="career">${t ? t.name : '自由人'}</div><small>${t ? `${t.partner ? '合作战队' : '普通队'} · 底子 ${teamRating(t)}` : '年初等报价'}</small></div>
+        <div class="cell"><div class="label">人气</div><div class="num">${fmt(p.fame)}</div><small>现金 ${fmt(meta.cash)}</small></div>
+      </div>
+      <div class="section">
+        <p class="tip" style="color:var(--bone)">${titles}${p.suspended ? ` · <span class="ban">禁赛剩 ${p.suspended} 个 Stage</span>` : ''}</p>
+        <p class="tip" style="margin-top:6px">背调档案：${dirtyText}</p>
+        <button class="btn btn-primary" id="btn-year" style="margin-top:12px">${p.year === 0 ? '开始第 1 年 · 摇状态' : `第 ${p.year + 1} 年 · 摇状态`}</button>
+      </div>
+      ${formPanel(p.age)}
+      <div class="section"><div class="label">履历</div>${historyLedger()}</div>`
   }
+
+  app.innerHTML = `<div class="reveal">${top.html}${body}</div>`
+  top.bind()
+  $('btn-start-career')?.addEventListener('click', () => { startCareer(meta); writeMeta(meta); renderPro() })
+  $('btn-year')?.addEventListener('click', () => { beginYear(meta); startProYear() })
+  mountDebug()
 }
+
+function proLogs() {
+  const p = meta.pro
+  if (proShownLog < p.log.length) { appendTo('pro-log', p.log.slice(proShownLog)); proShownLog = p.log.length }
+  if (proShownHl < p.highlights.length) { appendTo('pro-hl', p.highlights.slice(proShownHl)); proShownHl = p.highlights.length }
+}
+
+function proHud() {
+  const p = meta.pro
+  const set = (id: string, html: string) => { const el = $(id); if (el) el.innerHTML = html }
+  const t = teamOf(p.teamId)
+  set('pro-title', `${t ? t.name : '自由人'}`)
+  set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁</span><span>${p.stageAt ? `Stage <span class="num">${p.stageAt}</span> / 3` : '年初'}</span><span>${formBadge(p.form)} 实力 <span class="num">${p.skill}</span></span>`)
+  set('pro-res', `<span>现金 <b class="num ${meta.cash < 0 ? 'lose' : ''}">${fmt(meta.cash)}</b></span><span>人气 <b class="num">${fmt(p.fame)}</b></span><span>冠军 <b class="num">${p.titles.regional}</b></span><span>国际赛 <b class="num">${p.titles.intl}</b></span>${p.suspended ? `<span class="ban">禁赛 ${p.suspended}</span>` : ''}`)
+  const bar = $('pro-bar')
+  if (bar) bar.style.width = `${(p.stageAt / 3) * 100}%`
+}
+
+function startProYear() {
+  stopTimer()
+  stopProTimer()
+  proPaused = false
+  proCommitted = false
+  fastForward = false
+  const p = meta.pro
+  app.innerHTML = `
+    <div class="top">
+      <h2 id="pro-title"></h2>
+      <div class="actions"><button class="btn btn-sm" id="btn-pro-pause">暂停</button></div>
+    </div>
+    <div class="stat" id="pro-meta"></div>
+    <div class="stat" id="pro-res" style="margin-top:6px"></div>
+    <div class="bar"><i id="pro-bar" style="width:0%"></i></div>
+    <div class="tip" style="margin-bottom:16px">OWCS 中国赛区 · 第 ${p.year + 1} 年${meta.manual ? ' · 点赛程推进' : ''}</div>
+    <div class="log-cols">
+      <div class="log-col"><div class="label">赛程</div><div class="log-box" id="pro-log"></div></div>
+      <div class="log-col"><div class="label">高光</div><div class="log-box" id="pro-hl"></div></div>
+    </div>
+    <div class="mask" id="pro-pause" hidden>
+      <div class="mask-box">
+        <div class="mask-title">暂停</div>
+        <button class="btn btn-primary" id="btn-pro-resume">继续</button>
+        <button class="btn" id="btn-pro-ff">${fastForward ? '取消快进' : '快进'}</button>
+        <button class="btn btn-danger" id="btn-pro-exit">退出（这一年重打）</button>
+      </div>
+    </div>
+    <div class="mask" id="pro-choice" hidden>
+      <div class="mask-box">
+        <div class="mask-title" id="pro-choice-title" style="color:var(--brass)"></div>
+        <div class="mask-body" id="pro-choice-body"></div>
+        <div id="pro-choice-btns"></div>
+      </div>
+    </div>
+  `
+  proShownLog = 0
+  proShownHl = 0
+  proLogs()
+  proHud()
+  $('btn-pro-pause')!.onclick = () => { proPaused = true; stopProTimer(); $('btn-pro-ff')!.textContent = fastForward ? '取消快进' : '快进'; showSheet('pro-pause') }
+  $('btn-pro-resume')!.onclick = resumePro
+  $('btn-pro-ff')!.onclick = () => { fastForward = !fastForward; resumePro() }
+  $('btn-pro-exit')!.onclick = () => { stopProTimer(); Object.assign(meta, loadMeta()); renderPro() }
+  if (meta.manual) $('pro-log')!.onclick = () => { if (!proPaused && !meta.pro.choice) tickPro() }
+  else proTimer = window.setTimeout(tickPro, intervalMs() * 3)
+  mountDebug()
+}
+
+function resumePro() {
+  proPaused = false
+  hideSheets()
+  if (!meta.manual) { stopProTimer(); tickPro() }
+}
+
+function tickPro() {
+  if (proPaused) return
+  const r = proStep()
+  proLogs()
+  proHud()
+  if (r === 'choice') { showProChoice(); return }
+  if (r === 'done') { stopProTimer(); proTimer = window.setTimeout(renderProSettle, 1200); return }
+  // 每行是一整个系列赛，比天梯一把慢 3 倍
+  if (!meta.manual) proTimer = window.setTimeout(tickPro, fastForward ? intervalMs() : intervalMs() * 3)
+}
+
+function showProChoice() {
+  const c = meta.pro.choice
+  if (!c) { tickPro(); return }
+  stopProTimer()
+  $('pro-choice-title')!.textContent = c.title
+  $('pro-choice-body')!.innerHTML = c.body
+  $('pro-choice-btns')!.innerHTML = c.options.map((o) => `<button class="btn ${o.cls ? 'btn-' + o.cls : ''}" data-opt="${o.id}">${o.label}${o.sub ? `<span class="btn-sub">${o.sub}</span>` : ''}</button>`).join('')
+  $('pro-choice-btns')!.querySelectorAll<HTMLButtonElement>('[data-opt]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.opt!
+      if (id === 'retire' && !confirm('退役：生涯到此为止，结算结局。确定？')) return
+      if (id === 'fix_yes' && !confirm('接假赛的钱：这一步没有回头路。确定？')) return
+      proChoose(meta, id)
+      hideSheets()
+      if (meta.manual) tickPro()
+      else { stopProTimer(); tickPro() }
+    }
+  })
+  showSheet('pro-choice')
+}
+
+function renderProSettle() {
+  stopProTimer()
+  fastForward = false
+  const p = meta.pro
+  if (!proCommitted) {
+    proCommitted = true
+    if (!p.ending) commitYear(meta)
+    writeMeta(meta)
+  }
+  const yearNo = p.ending ? p.year + 1 : p.year
+  const thisYear = p.history.filter((r) => r.year === yearNo)
+  const newAch = p.highlights.filter((l) => l.cls === 'ach').map((l) => l.text)
+  const t = teamOf(p.teamId)
+  app.innerHTML = `<div class="reveal">
+    <div class="sub" style="margin:0 0 6px">${p.ending ? '生涯结算' : `年终 · 第 ${yearNo} 年`}</div>
+    <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">${p.ending ? p.ending.title : (t ? t.name : '自由人')}</span></div>
+    <div class="stat" style="justify-content:center;margin-top:6px">
+      <span><span class="num">${p.age}</span> 岁</span>
+      <span>${formBadge(p.form)}</span>
+      <span>人气 <span class="num">${fmt(p.fame)}</span></span>
+      <span>现金 <span class="num ${meta.cash < 0 ? 'lose' : ''}">${fmt(meta.cash)}</span></span>
+    </div>
+    <div class="rule-brass"></div>
+    ${p.ending ? `<div class="section ending-card">
+        <h2>${p.ending.title}</h2>
+        <div class="tip">${p.ending.rankLabel}</div>
+        ${p.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
+      </div>` : ''}
+    ${thisYear.length ? `<div class="dossier">${thisYear.map((r) => `<div class="cell"><div class="label">Stage ${r.stage}</div><div class="num" style="color:var(--brass)">${r.place ? `第 ${r.place}` : '—'}</div><small>${r.intl ? `国际赛 ${r.intl} · ` : ''}${r.prize ? `+${fmt(r.prize)}` : r.note ?? '预选出局'}</small></div>`).join('')}</div>` : ''}
+    ${newAch.length ? `<div class="section"><div class="label">新成就</div>${newAch.map((txt) => `<div class="ach-row got pro"><b>${txt.replace(/^成就【|】$/g, '')}</b><span>${ACH_MAP[Object.keys(ACH_MAP).find((k) => `成就【${ACH_MAP[k].name}】` === txt) ?? '']?.desc ?? ''}</span></div>`).join('')}</div>` : ''}
+    <div class="section" style="padding-bottom:6px">
+      ${p.ending
+        ? (p.lifetimeBan ? '' : '<button class="btn btn-primary" id="pro-again">再开一段生涯</button>')
+        : '<button class="btn btn-primary" id="pro-next">下一年 · 摇状态</button>'}
+      <div class="grid-2">
+        <button class="btn" id="pro-home">职业主页</button>
+        <button class="btn" id="home">回首页</button>
+      </div>
+    </div>
+    ${p.highlights.length ? `<div class="section"><div class="label">本年高光</div>${p.highlights.slice(0, 12).map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
+    <div class="section"><div class="label">赛程</div><div class="log-box" id="pro-log" style="max-height:40vh"></div></div>
+  </div>`
+  appendTo('pro-log', p.log)
+  $('pro-next')?.addEventListener('click', () => { beginYear(meta); startProYear() })
+  $('pro-again')?.addEventListener('click', () => { startCareer(meta); writeMeta(meta); beginYear(meta); startProYear() })
+  $('pro-home')!.onclick = renderPro
+  $('home')!.onclick = renderHome
+  mountDebug()
+}
+
 
 function renderAbout() {
   const top = pageTop('说明', renderHome)
@@ -558,12 +739,12 @@ function renderAbout() {
       <p class="tip" style="color:var(--bone)">代练替你打，胜率按代练段位与你的差算；陪玩和你一起打，同档低一点，但能 4 陪 1。都是宽组减收益、脏环境、吃举报。代练把你抬到真实水平之上，之后会被系统修正回来。</p>
     </div>
     <div class="section">
-      <div class="label">职业线</div>
-      <p class="tip" style="color:var(--bone)">打到宗师 1 以上会有战队私信 → 试训 → 签约。6 个赛季 = 1 年，年内第 2 / 4 / 6 季末打 OWCS 中国赛区 Stage：预选瑞士轮 → 循环赛 → 双败季后赛 → 国际赛。年末转会窗。25 岁后可能退役。</p>
+      <div class="label">职业模式</div>
+      <p class="tip" style="color:var(--bone)">单独的一条线，天梯里触及宗师或打满 ${PRO_UNLOCK_SEASONS} 季解锁。${PRO_START_AGE} 岁起步，一年一局：年初摇状态档，三个 Stage 逐场滚动（预选瑞士轮 → 循环赛 → 双败季后赛 → 国际赛），年末转会窗自己选队。会发生什么、怎么收场，打了才知道。天梯里的现金、人气和黑历史会带过去。</p>
     </div>
     <div class="section">
       <div class="label">其他</div>
-      <p class="tip" style="color:var(--bone)">胜场攒竞技点，${GUN_COST} 换金枪，每年一把玉枪。每 ${SOFT_RESET_EVERY} 季软重置。赛季末可能被控温卡在大段 1·99——云泥之隔。</p>
+      <p class="tip" style="color:var(--bone)">胜场攒竞技点，${GUN_COST} 换金枪，每年一把玉枪。每 ${SOFT_RESET_EVERY} 季软重置。</p>
     </div>
   </div>`
   top.bind()
@@ -661,7 +842,6 @@ function renderMarket() {
   const cur = g && g.phase !== 'placement' ? rankInline(g.rank) : meta.lastRank ? `上季 ${rankInline(meta.lastRank)}` : '未定级'
   const pct = (p: number) => `${Math.round(p * 100)}%`
   const late = g ? isLateSeason(g) : false
-  const signed = (g?.career.phase ?? meta.career.phase) === 'signed'
   const top = pageTop('黑市', () => { backFrom === 'game' && game ? renderGame() : renderHome() })
   const preNote = !g
     ? meta.preorder
@@ -674,7 +854,6 @@ function renderMarket() {
     ${top.html}
     <div class="stat"><span>现金 <b class="num ${cash < 0 ? 'lose' : ''}">${fmt(cash)}</b></span><span>信誉 <b class="num">${credit}</b></span><span>污染 <b class="num">${pol}</b></span><span>你 ${cur}</span></div>
     ${preNote}
-    ${signed ? '<p class="tip" style="color:var(--clay)">你是签约选手。请代练 / 预订会被拒，请陪玩会进黑历史，赛前审查翻出来就是终身禁赛。</p>' : ''}
     <div class="section">
       <div class="label">代练 · 替你打 ${HELPER_PACK_GAMES} 把</div>
       <div class="menu">
@@ -702,7 +881,7 @@ function renderMarket() {
           <span class="name">${j.name}<span class="odds">污染 +${j.pollution}</span></span><span class="leader"></span><span class="price">+${fmt(j.payout)}</span>
         </button>`).join('')}
       </div>
-      <p class="tip" style="margin-top:8px">来钱快，之后整季按把结算。每一单都进黑历史：签约背调、赛前审查都可能翻出来 → 终身禁赛。</p>
+      <p class="tip" style="margin-top:8px">来钱快，之后整季按把结算。每一单都进黑历史。</p>
     </div>
     <div class="section">
       <div class="menu">
@@ -733,7 +912,7 @@ function renderMarket() {
   app.querySelectorAll<HTMLButtonElement>('[data-job]').forEach((b) => {
     b.onclick = () => {
       if (!game) return need()
-      if (!confirm('接代练单：进黑历史，以后签约背调 / 赛前审查可能翻出来，终身禁赛。确定？')) return
+      if (!confirm('接代练单：会留在账号记录里，进黑历史。确定？')) return
       done(takeBoostJob(game, b.dataset.job!))
     }
   })
@@ -868,10 +1047,9 @@ function renderSettle() {
   const real = scoreToRank(g.mmr)
   const gap = rankScore(g.rank) - g.mmr
   const newAch = g.newAchievements.map((id) => ACH_MAP[id]).filter(Boolean)
-  // 职业线 / 结局类高光排前面，段位升降排后面
-  const big = (l: LogLine) => l.cls === 'career' || l.cls === 'ending' || l.cls === 'ban'
+  // 结局类高光排前面，段位升降排后面
+  const big = (l: LogLine) => l.cls === 'ending' || l.cls === 'ban'
   const hl = [...g.highlights.filter(big), ...g.highlights.filter((l) => !big(l))].slice(0, 10)
-  const stageRes = g.career.history.filter((r) => r.year === g.year && r.stage === stageOfSeason(g.seasonInYear))[0]
   const nextTip = g.banned
     ? `账号 #${meta.accountNo - 1} 已封。下赛季换新号 #${meta.accountNo}，段位归零。`
     : isSoftResetSeason(meta)
@@ -890,44 +1068,40 @@ function renderSettle() {
     <div class="rule-brass"></div>
     <div class="dossier">
       <div class="cell"><div class="label">对局</div><div class="num">${g.matchesThisSeason}</div><small>胜 ${g.wins}</small></div>
-      <div class="cell"><div class="label">现金</div><div class="num ${g.cash < 0 ? 'lose' : ''}">${fmt(g.cash)}</div><small>${g.proIncome ? `职业收入 +${fmt(g.proIncome)} · ` : ''}人气 ${fmt(g.fans)} · 竞技点 ${g.compPoints}</small></div>
+      <div class="cell"><div class="label">现金</div><div class="num ${g.cash < 0 ? 'lose' : ''}">${fmt(g.cash)}</div><small>人气 ${fmt(g.fans)} · 竞技点 ${g.compPoints}</small></div>
       <div class="cell"><div class="label">连胜 / 连败</div><div class="num">${g.bestStreak}<span style="color:var(--bone-faint)"> / </span>${g.worstStreak}</div><small>污染 ${g.envPollution}</small></div>
     </div>
     <p class="tip" style="margin-top:14px">${nextTip}</p>
-    ${g.banned && g.career.phase !== 'banned' ? `<div class="mute-line on" style="margin-top:12px"><span>封号的代价</span><small>新号从零打。这季开挂已记入黑历史（开挂 ${meta.dirty.cheatSeasons} 季、代练单 ${meta.dirty.boostJobs}、请人 ${meta.dirty.hires}）→ 以后签约背调 / 赛前审查翻出来的概率 ${Math.round(exposureP(meta.dirty) * 100)}%，翻出来就是终身禁赛。职业路还没关，但越走越窄。</small></div>` : ''}
-    ${g.career.phase === 'banned' ? `<div class="mute-line on" style="margin-top:12px"><span>本存档职业线已永闭</span><small>终身禁赛。天梯、黑市、成就照常，试训 / 签约 / 主播队不再出现。想再走职业路只能删档重来（成就保留）。</small></div>` : ''}
-    ${stageRes ? `<div class="section" style="text-align:center">
-        <div class="label" style="text-align:center">OWCS 中国赛区 · 第 ${stageRes.year} 年 Stage ${stageRes.stage} · ${stageRes.team}</div>
-        <div class="num" style="font-size:2rem;color:var(--brass)">${stageRes.place ? `地区第 ${stageRes.place}` : stageRes.note ?? '预选淘汰'}</div>
-        <div class="tip">${stageRes.intl ? `${INTL_NAME[stageRes.stage]} 第 ${stageRes.intl} · ` : ''}${stageRes.prize ? `奖金分成 +${fmt(stageRes.prize)}` : '无奖金'}${stageRes.note && stageRes.place ? ` · ${stageRes.note}` : ''}</div>
-      </div>` : ''}
+    ${g.banned ? `<div class="mute-line on" style="margin-top:12px"><span>封号的代价</span><small>新号从零打。黑历史已更新（开挂 ${meta.dirty.cheatSeasons} 季、代练单 ${meta.dirty.boostJobs}、请人 ${meta.dirty.hires}）→ 职业模式里每次背调 / 赛前审查被翻出来的概率 ${Math.round(exposureP(meta) * 100)}%。</small></div>` : ''}
     ${g.ending ? `<div class="section ending-card">
         <h2>${g.ending.title}</h2>
         <div class="tip">${g.ending.rankLabel}</div>
         ${g.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
       </div>` : ''}
-    ${hl.length ? `<div class="section"><div class="label">赛季高光</div>${hl.map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
     ${newAch.length ? `<div class="section"><div class="label">新成就</div>${newAch.map((a) => `<div class="ach-row got ${a.honor ? 'pro' : ''}"><b>${a.name}</b><span>${a.desc}</span></div>`).join('')}</div>` : ''}
+    <div class="section" style="padding-bottom:6px">
+      <button class="btn btn-primary" id="again">再来一赛季 · 摇天赋</button>
+      <div class="grid-2">
+        <button class="btn" id="career" ${proUnlocked(meta) && !meta.pro.lifetimeBan ? '' : 'disabled'}>职业模式</button>
+        <button class="btn" id="home">回首页</button>
+      </div>
+    </div>
+    ${hl.length ? `<div class="section"><div class="label">赛季高光</div>${hl.map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
     <div class="section">
       <div class="log-cols">
         <div class="log-col"><div class="label">对局</div><div class="log-box" id="log-box"></div></div>
         <div class="log-col"><div class="label">事件</div><div class="log-box" id="event-box"></div></div>
       </div>
     </div>
-    <button class="btn btn-primary" id="again">再来一赛季 · 摇天赋</button>
-    <div class="grid-2">
-      <button class="btn" id="career">职业路</button>
-      <button class="btn" id="home">回首页</button>
-    </div>
   </div>`
   shownLog = 0
   shownEv = 0
   flushLogs()
   $('again')!.onclick = () => start(g.identity === 'boost' && !g.banned ? 'boost' : 'casual')
-  $('career')!.onclick = () => { game = null; renderCareer() }
+  $('career')!.onclick = () => { game = null; renderPro() }
   $('home')!.onclick = () => { game = null; renderHome() }
   mountDebug()
-  // 结算后主动弹邀约：开播 / 试训 / 组队 / 负债三条路；处理完回首页看新状态
+  // 结算后主动弹邀约：职业模式解锁 / 负债三条路；处理完回首页看新状态
   showOffers(() => { game = null; renderHome() })
 }
 
@@ -940,6 +1114,6 @@ renderHome()
   else if (go === 'market') renderMarket()
   else if (go === 'shop') renderShop()
   else if (go === 'ach') renderAchievements()
-  else if (go === 'career') renderCareer()
+  else if (go === 'pro' || go === 'career') renderPro()
   else if (go === 'about') renderAbout()
 }

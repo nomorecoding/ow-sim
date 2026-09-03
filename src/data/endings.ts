@@ -1,5 +1,5 @@
-import type { GameState, MajorTier, SeasonEnding } from '../types'
-import { MAJOR_NAME, nextMajor, rankLabel } from './constants'
+import type { GameState, MajorTier, MetaSave, SeasonEnding } from '../types'
+import { MAJOR_NAME, TEAMS, nextMajor, rankLabel } from './constants'
 
 /** 白金→翡翠 经典判词；其它大段门用同一结构换词 */
 const PLAT_EMERALD_VERSE = [
@@ -34,61 +34,86 @@ export function buildCloudMudEnding(major: MajorTier): SeasonEnding | null {
   }
 }
 
-export function buildWorldChampEnding(g: GameState, eventName: string): SeasonEnding {
-  return {
-    id: 'world_champion',
-    title: `${eventName} 冠军`,
-    rankLabel: `${g.career.team?.name ?? ''} · ${g.age} 岁`,
-    verse: [
-      '决胜图最后一波，你按下了那个键。',
-      '教练在后台哭得比你还凶。那个当年在路人局骂你的人，正在弹幕里打「牛」。',
-      `你想起第 1 个赛季的定级——${g.season > 1 ? '五胜五负，白金四' : '就在刚才'}。`,
-      '白金是白金，冠军是冠军。原来路是能走通的。',
-    ],
-  }
+/* ———————————— 职业模式结局 ———————————— */
+
+export type ProEndReason = 'retire' | 'quit' | 'lifetime_ban' | 'fix_ruin' | 'hell_return'
+
+/** 退役去向：只在结局里揭示 */
+function afterlife(meta: MetaSave): string {
+  const p = meta.pro
+  if (p.lifetimeBan) return '直播平台也不签你。你在陪玩平台挂了个号，价格写的是 38。'
+  if (p.fame >= 200000) return `退役直播首播 ${Math.round(p.fame / 40).toLocaleString()} 人在线。MCN 的合同比当年的年薪多一个零。以后的日子就是播。`
+  if (p.fame >= 50000) return '你开了播。老粉还在，每晚几千人陪你打天梯。够活，也自在。'
+  if (p.yearsPlayed >= 5) return '一家青训队请你当教练。你训人的方式和当年教练训你的一模一样。'
+  if (p.titles.regional + p.titles.intl > 0) return '你去了一家俱乐部做数据分析。工牌上的照片还是打职业那年拍的。'
+  return '你注销了陪玩平台的账号，回学校把剩下的课上完了。'
 }
 
-export function buildRetireEnding(g: GameState): SeasonEnding {
-  const h = g.career.history
-  const best = h.length ? Math.min(...h.map((r) => r.place || 9)) : 9
-  const intl = h.filter((r) => r.intl > 0).length
-  return {
-    id: 'retired',
-    title: '退役',
-    rankLabel: `${g.age} 岁 · 效力 ${h.length} 个 Stage`,
-    verse: [
-      `职业生涯最好成绩：地区第 ${best}${intl ? `，${intl} 次国际赛` : ''}${g.career.worldCup ? `，${g.career.worldCup} 次国家队` : ''}。`,
-      '你把外设收进箱子，登录了那个很久没上的路人号。',
-      '定级赛第一把，对面有人说：「这 ID 我好像见过。」',
-    ],
-  }
-}
+export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEnding {
+  const p = meta.pro
+  const t = p.titles
+  const team = TEAMS.find((x) => x.id === p.teamId)?.name ?? ''
+  const label = `${p.age} 岁 · ${p.yearsPlayed} 年${team ? ` · ${team}` : ''}`
+  const record = `地区冠军 ${t.regional} · 国际赛 ${t.intl} · 世界冠军 ${t.world}${t.worldCup ? ` · 国家队 ${t.worldCup}` : ''}`
 
-export function buildLifetimeBanEnding(g: GameState, reason: string): SeasonEnding {
-  return {
-    id: 'lifetime_ban',
-    title: '终身禁赛',
-    rankLabel: `${g.age} 岁 · ${rankLabel(g.rank)}`,
-    verse: [
-      reason,
-      '公告只有三行，你的名字在第二行。',
-      '当年那几单代练、那几套陪玩，每一笔都在账号记录里。',
-      '这个存档的职业线到此为止。天梯还能打，只是再没有人会私信你了。',
-    ],
+  if (reason === 'lifetime_ban') {
+    return {
+      id: 'lifetime_ban', title: '终身禁赛', rankLabel: label,
+      verse: [p.banReason ?? '', '公告只有三行，你的名字在第二行。', '当年那几单代练、那几套陪玩，每一笔都在账号记录里。', '这个存档的职业模式到此为止。天梯还能打，只是再没有人会私信你了。', afterlife(meta)],
+    }
   }
-}
-
-export function buildHellReturnEnding(g: GameState, low: number, income: number): SeasonEnding {
+  if (reason === 'fix_ruin') {
+    return {
+      id: 'fix_ruin', title: '那笔钱', rankLabel: label,
+      verse: ['投注数据比你的操作诚实。', '公告出来那天，队友把你从群里踢了。收的钱还在卡里，但没有一个人再叫你的 ID。', `${record}。全部作废。`, afterlife(meta)],
+    }
+  }
+  if (reason === 'hell_return') {
+    return {
+      id: 'hell_return', title: '地狱归来', rankLabel: label,
+      verse: [`最低的时候，账上是 ${meta.cashLow.toLocaleString()}。房租、利息、家里的电话。`, '你没接单，没请人，没开挂，没收那笔钱。就是打。', `本生涯职业收入 ${p.income.toLocaleString()}。${record}。`, '从负债到领奖台，中间没有捷径。王者风范，地狱归来。'],
+    }
+  }
+  if (reason === 'quit') {
+    return {
+      id: 'quit', title: '回家', rankLabel: label,
+      verse: [`负债 ${(-meta.cash).toLocaleString()}。你妈说家里给你找了份工作。`, '你把队服叠好放进箱底，训练赛群改成免打扰。', `${record}。`, '几年后同事问你会不会打这个游戏，你说：会一点。'],
+    }
+  }
+  // retire：按履历分层
+  if (t.world >= 1 && t.regional >= 3) {
+    return {
+      id: 'legend', title: '一代传奇', rankLabel: label,
+      verse: [`${record}。`, '退役赛最后一图，全场起立。对面的选手是看你比赛长大的。', '你的 ID 进了名人堂，你的出装教程还在被人搬运。', afterlife(meta)],
+    }
+  }
+  if (t.world >= 1) {
+    return {
+      id: 'world_champion', title: '世界冠军', rankLabel: label,
+      verse: [`${record}。`, '决胜图最后一波，你按下了那个键。教练在后台哭得比你还凶。', '那个当年在路人局骂你的人，正在弹幕里打「牛」。', afterlife(meta)],
+    }
+  }
+  if (t.intl >= 1 || t.regional >= 2) {
+    return {
+      id: 'regional_king', title: '赛区名将', rankLabel: label,
+      verse: [`${record}。`, '国际赛没能更进一步，但这个赛区没人不知道你。', '退役那天，热搜上挂了半天。', afterlife(meta)],
+    }
+  }
+  if (p.yearsPlayed >= 10) {
+    return {
+      id: 'evergreen', title: '常青树', rankLabel: label,
+      verse: [`${p.yearsPlayed} 年。${record}。`, '没拿过冠军，也没被裁过。队友换了四轮，你还在。', '解说说你是「赛区活化石」。你觉得挺好。', afterlife(meta)],
+    }
+  }
+  if (p.yearsPlayed <= 3 && t.regional + t.intl === 0) {
+    return {
+      id: 'bench', title: '板凳', rankLabel: label,
+      verse: [p.benchYears ? `${p.yearsPlayed} 年，${p.benchYears} 年替补。` : `${p.yearsPlayed} 年，走得比来得快。`, '你上过场的比赛，视频合集不到十分钟。', '退役公告发出来，评论区第一条是：「这谁？」', afterlife(meta)],
+    }
+  }
   return {
-    id: 'hell_return',
-    title: '地狱归来',
-    rankLabel: `${g.career.team?.name ?? ''} · ${g.age} 岁`,
-    verse: [
-      `最低的时候，账上是 ${low}。房租、利息、家里的电话。`,
-      '你没接单，没请人，没开挂。就是打。',
-      `这个赛季，职业收入 ${income.toLocaleString()}。`,
-      '从负债到领奖台，中间没有捷径，只有你自己知道那几百把是怎么打下来的。王者风范，地狱归来。',
-    ],
+    id: 'journeyman', title: '打工人', rankLabel: label,
+    verse: [`${p.yearsPlayed} 年。${record}。`, '你换过队，坐过板凳，也打过季后赛。', '不算成功，也不算失败。这个赛区大多数人都是这样退役的。', afterlife(meta)],
   }
 }
 

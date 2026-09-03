@@ -10,13 +10,13 @@ export interface RankState {
   rp: number
 }
 
-/** 身份：路人 / 代练 / 外挂。职业选手是 career 状态，不是身份。 */
+/** 身份：路人 / 代练 / 外挂 */
 export type Identity = 'casual' | 'boost' | 'cheat'
 
 export type SeasonPhase = 'placement' | 'regular' | 'rivalry' | 'settle'
 
-/** 生涯阶段：决定赛季额度与事件池 */
-export type LifeStage = 'student' | 'worker' | 'dropout' | 'streamer' | 'free' | 'coach'
+/** 人生阶段（天梯模式背景）：决定赛季额度与收支 */
+export type LifeStage = 'student' | 'worker' | 'dropout' | 'free'
 
 /** 本季天赋档（= 隐藏 MMR 区间） */
 export type TalentTier = 'barrel' | 'normal' | 'something' | 'genius' | 'monster'
@@ -77,11 +77,11 @@ export interface Achievement {
   id: string
   name: string
   desc: string
-  /** 职业线 / 荣誉类：金框展示 */
+  /** 职业模式荣誉：金框展示，解锁前连描述都不给 */
   honor?: boolean
 }
 
-/** 全局成长项：只改天赋分布，不改单季胜率 */
+/** 天梯全局成长项：只改天赋分布，不改单季胜率 */
 export interface Growth {
   /** 赛季经验（每季 +1，上限 15） */
   seasons: number
@@ -89,60 +89,9 @@ export interface Growth {
   heroPool: number
   /** 设备等级 0–3（现金买） */
   gear: number
-  /** 战队训练（签约期间每 Stage +1，上限 6） */
-  training: number
 }
 
-/** 战队 */
-export interface Team {
-  id: string
-  name: string
-  /** 合作战队：Stage 1 免预选，底薪高 */
-  partner: boolean
-  /** 队伍底子 0–100 */
-  rating: number
-  /** 你自己组的主播队：自付底薪，奖金翻倍 */
-  own?: boolean
-}
-
-/** banned = 终身禁赛（黑历史被翻出来），本存档职业线永闭 */
-export type CareerPhase = 'none' | 'scouted' | 'trial' | 'signed' | 'retired' | 'banned'
-
-export interface StageResult {
-  year: number
-  stage: 1 | 2 | 3
-  team: string
-  /** 地区名次；0 = 预选淘汰 */
-  place: number
-  /** 国际赛名次；0 = 未出线 */
-  intl: number
-  prize: number
-  /** 花边：假赛 / 宫斗 / 解散 等 */
-  note?: string
-}
-
-export interface Career {
-  phase: CareerPhase
-  team?: Team
-  /** 签约赛季数 */
-  seasonsSigned: number
-  history: StageResult[]
-  /** 本年度累计名次得分，转会窗用 */
-  yearScore: number
-  worldCup: number
-  /** 退役后的去向 */
-  afterlife?: 'streamer' | 'coach' | 'escort'
-  /** 退役发生的年份（结局只触发一次） */
-  retiredYear?: number
-  /** 终身禁赛原因 */
-  banReason?: string
-  /** 主动放弃职业梦（负债选了正业）：不再被发掘、不能报名 */
-  dreamGiven?: boolean
-  /** 主播队累计解散次数 */
-  disbands?: number
-}
-
-/** 黑历史：签约后每次正赛都有被翻出来的概率 */
+/** 黑历史：天梯里做的脏事，职业模式里付账 */
 export interface DirtyHistory {
   /** 接过的代练单数 */
   boostJobs: number
@@ -151,6 +100,8 @@ export interface DirtyHistory {
   /** 开过挂的赛季数 */
   cheatSeasons: number
 }
+
+/* ———————————————————— 天梯模式：一个赛季 ———————————————————— */
 
 export interface GameState {
   persona: Persona
@@ -175,20 +126,16 @@ export interface GameState {
   cash: number
   credit: number
   compPoints: number
-  /** 人气（粉丝数量级）：主播收入、组队门槛 */
+  /** 人气：只影响收入事件，职业模式带入 */
   fans: number
   playtime: number
   envPollution: number
   redBox: boolean
   muteLeft: number
   muteCount: number
-  /** 终身禁赛（= career.phase === 'banned'） */
-  careerBanned: boolean
   dirty: DirtyHistory
   /** 本季是否开过挂（写入黑历史） */
   cheatedThisSeason: boolean
-  /** 本季职业收入（底薪 + 奖金），地狱归来判定用 */
-  proIncome: number
   /** 历史最低现金 */
   cashLow: number
   reportStacks: number
@@ -231,11 +178,114 @@ export interface GameState {
   peakScore: number
   /** 修正词计数（成就用） */
   modCount: Partial<Record<RankModifier, number>>
-  career: Career
-  /** 本季是否触发被发掘 */
-  scoutedThisSeason: boolean
   ending?: SeasonEnding
 }
+
+/* ———————————————————— 职业模式：一段生涯 ———————————————————— */
+
+/** 战队 */
+export interface Team {
+  id: string
+  name: string
+  /** 合作战队：Stage 1 免预选，底薪高 */
+  partner: boolean
+  /** 队伍底子 0–100 */
+  rating: number
+}
+
+/** 本年状态档（职业模式的「天赋」） */
+export type Form = 'slump' | 'ok' | 'online' | 'peak' | 'god'
+
+export interface StageResult {
+  year: number
+  stage: 1 | 2 | 3
+  team: string
+  /** 地区名次；0 = 预选淘汰 / 未参赛 */
+  place: number
+  /** 国际赛名次；0 = 未出线 */
+  intl: number
+  prize: number
+  /** 是否替补席看完 */
+  bench?: boolean
+  note?: string
+}
+
+export interface ProOffer {
+  teamId: string
+  /** 年薪 */
+  salary: number
+  role: 'starter' | 'bench'
+}
+
+/** 需要玩家点一下的抉择（转会窗 / 某些事件） */
+export interface ProChoice {
+  id: string
+  title: string
+  body: string
+  options: Array<{ id: string; label: string; cls?: string; sub?: string }>
+}
+
+export interface ProTitles {
+  regional: number
+  intl: number
+  world: number
+  worldCup: number
+}
+
+export interface ProState {
+  /** 天梯里触及宗师 / 打满 N 季后解锁 */
+  unlocked: boolean
+  /** 第几次生涯 */
+  runs: number
+  /** 生涯进行中 */
+  active: boolean
+  age: number
+  /** 生涯第几年 */
+  year: number
+  teamId: string | null
+  /** 本年年薪（已发） */
+  salary: number
+  form: Form
+  /** 本年个人实力 0–100 */
+  skill: number
+  fame: number
+  benchYears: number
+  /** 连续无队年数 */
+  idleYears: number
+  yearScore: number
+  history: StageResult[]
+  titles: ProTitles
+  /** 接过的假赛次数（每个 Stage 都可能被翻） */
+  fixes: number
+  /** 禁赛剩余 Stage 数 */
+  suspended: number
+  /** 跨生涯成长点：只改状态档分布 */
+  growth: number
+  /** 本生涯职业收入（地狱归来判定） */
+  income: number
+  /** 本生涯是否始终干净 */
+  clean: boolean
+  /** 生涯结局（有则生涯结束） */
+  ending: SeasonEnding | null
+  /** 终身禁赛（跨生涯：本存档职业模式永闭） */
+  lifetimeBan: boolean
+  banReason?: string
+  /** 生涯统计（结局用） */
+  yearsPlayed: number
+  /** 本年日志与高光（页面刷新丢失，无妨） */
+  log: LogLine[]
+  highlights: LogLine[]
+  /** 待处理抉择 */
+  choice: ProChoice | null
+  /** 本年是否已结算（等玩家点「下一年」） */
+  yearDone: boolean
+  /** 本年内 Stage 进度 1–3，0 = 年初 */
+  stageAt: number
+  /** 历史结局收集 */
+  endings: Record<string, number>
+}
+
+/* ———————————————————— 全局档 ———————————————————— */
 
 export interface MetaSave {
   playtimeTotal: number
@@ -246,12 +296,11 @@ export interface MetaSave {
   speed: number
   manual: boolean
 
-  /* —— 人生 —— */
+  /* —— 人生（天梯模式背景） —— */
   age: number
   year: number
   seasonInYear: number
   growth: Growth
-  career: Career
   /** 历史天赋记录（各档次数） */
   talentLog: Record<TalentTier, number>
   bestTalent?: TalentTier
@@ -262,9 +311,9 @@ export interface MetaSave {
   compPoints: number
   fans: number
   dirty: DirtyHistory
-  /** 历史最低现金（负债深度，地狱归来判定） */
+  /** 历史最低现金（负债深度） */
   cashLow: number
-  /** 是否曾触及宗师（解锁报名试训） */
+  /** 是否曾触及宗师（解锁职业模式） */
   reachedGM: boolean
   /** 开赛前在黑市预订的帮手（已付款，开局即上号） */
   preorder?: Helper
@@ -277,7 +326,6 @@ export interface MetaSave {
   lastResetSeason: number
   quotaMod: number
   stage: LifeStage
-  careerBanned: boolean
   boostEarnedTotal: number
   bansTotal: number
   accountNo: number
@@ -287,4 +335,7 @@ export interface MetaSave {
   seen: Record<string, boolean>
   /** 调试：下季强制天赋 */
   debugTalent?: TalentTier
+
+  /* —— 职业模式 —— */
+  pro: ProState
 }
