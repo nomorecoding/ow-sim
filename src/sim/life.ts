@@ -4,21 +4,21 @@
  * 生成器驱动，UI 每 tick 调一次 lifeStep；遇到抉择停下等 lifeChoose。
  * 局内不写档；结束才 commit。刷新 = 这辈子重来。
  */
-import type { LifeState, LogLine, MajorTier, MetaSave } from '../types'
+import type { Growth, LifeState, LogLine, MajorTier, MetaSave } from '../types'
 import {
-  ACH_PERKS, ACH_PER_HERO_POOL, AGE_DECAY_PER_SEASON, BOOSTER_QUOTE, BOOST_LANDED_CASH, BOOST_SUSPEND_P, CHEAT_CATCH_MAX,
-  CHEAT_CATCH_P, COACH_COST, COACH_MOMENTUM, CREW_BONUS, DEFAULT_SPEED, GROWTH_CAP, MAJOR_NAME, MAJOR_ORDER,
-  MARKET_BOOST_PASS, MARKET_CHEAT_PASS, MILESTONE_POINTS, MOMENTUM_PER_PCT, NEW_YEAR_PASSION, PASSION_START,
+  ACH_PERKS, AGE_DECAY_PER_SEASON, BOOSTER_QUOTE, BOOST_LANDED_CASH, BOOST_SUSPEND_P, CHEAT_CATCH_MAX,
+  CHEAT_CATCH_P, CREW_BONUS, DEFAULT_SPEED, EXP_BY_MAJOR, EXP_PRO, MAJOR_NAME,
+  MARKET_BOOST_PASS, MARKET_CHEAT_PASS, MOMENTUM_PER_PCT, NEW_YEAR_PASSION, PASSION_START,
   PASSION_WARN_MULT, PERSONAS, QUIT_AGE, SCOUT_MAX_AGE, SCOUT_P, SEASONS_PER_YEAR, SLOPE_DECAY, STAGE_INFO, START_AGE,
-  SWITCH_POOL_DROP, SWITCH_POOL_MULT, SWITCH_POOL_SEASONS, TALENT_INFO, TALENT_ORDER, TOP_MIN_GAMES, TRIAL_BASE,
+  SWITCH_POOL_MULT, TALENT_INFO, TALENT_ORDER, TOP_MIN_GAMES, TRIAL_BASE,
   TRIAL_DIRTY_MULT, WALL_BASE, WALL_PASSION, ageMult, majorIndex, nextMajor, rankLabel,
 } from '../data/constants'
 import { clamp, gauss, irand, majorFloor, majorOf, rand, rankScore, scoreToRank } from './rank'
 import { COMMON_EVENTS, DIRTY_EVENTS, EGG_EVENTS, LIFE_EVENTS, pickEvent } from '../data/events'
 import { unlock } from './ach'
 import { ACHIEVEMENTS } from '../data/achievements'
-import { growthPoints, rollTalent } from '../data/talent'
-import { beginYear, commitYear, freshPro, proStep, startCareer } from './pro'
+import { addExp, rollTalent, talentShift } from '../data/talent'
+import { freshPro, startCareer } from './pro'
 import { buildLifeEnding, type LifeEndReason } from '../data/endings'
 
 const SAVE_KEY = 'ow-sim-meta-v5'
@@ -33,7 +33,7 @@ export function freshMeta(): MetaSave {
     endings: {},
     speed: DEFAULT_SPEED,
     manual: false,
-    growth: { runs: 0, heroPool: 0, milestones: 0 },
+    growth: { level: 0, exp: 0 },
     talentLog: { barrel: 0, normal: 0, something: 0, genius: 0, monster: 0 },
     reached: {},
     proBlockLives: 0,
@@ -54,7 +54,11 @@ export function loadMeta(): MetaSave {
     const raw = localStorage.getItem(SAVE_KEY)
     if (raw) {
       const m = { ...fresh, ...JSON.parse(raw) as MetaSave }
-      m.growth = { ...fresh.growth, ...m.growth }
+      // 旧成长（人生 / 英雄池 / 里程碑）折算成等级
+      const og = (m.growth ?? {}) as Partial<Growth> & { runs?: number; heroPool?: number; milestones?: number }
+      m.growth = typeof og.level === 'number'
+        ? { level: og.level, exp: og.exp ?? 0 }
+        : { level: Math.floor(((og.runs ?? 0) + (og.heroPool ?? 0) + (og.milestones ?? 0)) / 2), exp: 0 }
       m.pro = { ...fresh.pro, ...(m.pro ?? {}) }
       m.pro.titles = { ...fresh.pro.titles, ...(m.pro.titles ?? {}) }
       m.pro.log = []
@@ -72,8 +76,7 @@ export function loadMeta(): MetaSave {
       if (!old) continue
       const o = JSON.parse(old) as Partial<MetaSave> & { seasonsPlayed?: number }
       const m: MetaSave = { ...fresh, achievements: o.achievements ?? {}, endings: o.endings ?? {}, speed: o.speed ?? DEFAULT_SPEED, manual: o.manual ?? false }
-      m.growth.runs = Math.min(6, Math.floor((o.seasonsPlayed ?? 0) / 3))
-      recountHeroPool(m)
+      m.growth.level = Math.min(6, Math.floor((o.seasonsPlayed ?? 0) / 6))
       return m
     }
   } catch { /* ignore */ }
@@ -88,8 +91,9 @@ export function achCount(meta: MetaSave): number {
   return Object.keys(meta.achievements).filter((k) => ACHIEVEMENTS.some((a) => a.id === k)).length
 }
 
-export function recountHeroPool(meta: MetaSave) {
-  meta.growth.heroPool = Math.floor(achCount(meta) / ACH_PER_HERO_POOL)
+/** 下辈子天才 / 怪物合计上移的百分点 */
+export function currentShift(meta: MetaSave): number {
+  return talentShift(achCount(meta), meta.growth.level)
 }
 
 /** 已解锁的成就传承 */
@@ -102,14 +106,14 @@ export function perks(meta: MetaSave): Set<string> {
 
 export function createLife(meta: MetaSave): LifeState {
   const persona = PERSONAS[irand(0, PERSONAS.length - 1)]
-  const points = growthPoints(meta.growth)
+  const shift = currentShift(meta)
   const pk = perks(meta)
   let talent = meta.debugTalent
     ? { tier: meta.debugTalent, mmr: irand(TALENT_INFO[meta.debugTalent].start[0], TALENT_INFO[meta.debugTalent].start[1]) }
-    : rollTalent(points)
+    : rollTalent(shift)
   let rerolled = false
   if (!meta.debugTalent && pk.has('reroll')) {
-    const t2 = rollTalent(points)
+    const t2 = rollTalent(shift)
     if (TALENT_ORDER.indexOf(t2.tier) > TALENT_ORDER.indexOf(talent.tier)) { talent = t2; rerolled = true }
   }
   meta.debugTalent = undefined
@@ -198,8 +202,6 @@ export function lifeChoose(g: LifeState, optionId: string) {
 }
 
 /* ———————————— 工具 ———————————— */
-
-const fmt = (n: number) => n.toLocaleString()
 
 function L(g: LifeState, cls: string, text: string): LogLine {
   const l = { cls, text }
@@ -433,56 +435,23 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
   // 8. 被发掘：开挂 / 被职业圈拉黑的人，没人私信
   if (!g.scouted && g.age <= SCOUT_MAX_AGE && !g.banned && g.dirty.cheatSeasons === 0 && meta.proBlockLives <= 0) {
     const pr = SCOUT_P[g.rank.major]
-    const mult = (g.refusedTrials ? 0.5 : 1) * (perks(meta).has('scout') ? 1.5 : 1)
+    const mult = perks(meta).has('scout') ? 1.5 : 1
     if (pr && rand() < pr * mult + Math.min(0.1, g.fans / 100000)) {
-      yield* scouting(meta, g)
+      yield* scouting(g)
       if (g.over) return
     }
   }
 
-  // 9. 瓶颈抉择：卡墙了，热情还够（一辈子最多两次，同一道墙一次）
+  // 9. 死线（唯一会弹出来的抉择）：热情不够下一季，且卡墙
   const nextGames = STAGE_INFO[g.stage].games
   const wallNow = wallOf(g.mmr)
-  if (g.stuckSeasons >= 1 && wallNow && !g.choiceUsed[`bottleneck_${wallNow.into}`] && Object.keys(g.choiceUsed).filter((k) => k.startsWith('bottleneck')).length < 2 && g.passion > nextGames * 1.5) {
-    g.choiceUsed[`bottleneck_${wallNow.into}`] = true
-    const canCoach = g.cash >= COACH_COST
-    g.choice = {
-      id: 'bottleneck',
-      title: `卡在${MAJOR_NAME[wallNow.into]}门口第 ${g.stuckSeasons} 季了`,
-      body: `${rankLabel(g.rank)}，差一口气。现在每季突破概率 ${Math.round(breakChance(g, wallNow.into) * 100)}%。`,
-      options: [
-        { id: 'pool', label: '换英雄池', sub: `先掉 ${SWITCH_POOL_DROP} 分，接下来 ${SWITCH_POOL_SEASONS} 季涨得快一半` },
-        { id: 'coach', label: '找教练复盘', sub: canCoach ? `现金 −${fmt(COACH_COST)}，直接把势堆到墙上（+${COACH_MOMENTUM / MOMENTUM_PER_PCT}%）` : `要 ${fmt(COACH_COST)}，现金只有 ${fmt(g.cash)}`, cls: canCoach ? undefined : 'disabled' },
-        { id: 'keep', label: '算了，继续打', cls: 'primary', sub: '卡着卡着也能过' },
-      ],
-    }
-    yield 'choice'
-    const a = answer ?? 'keep'
-    answer = null
-    if (a === 'pool') {
-      g.mmr -= SWITCH_POOL_DROP
-      g.spurtSeasons = SWITCH_POOL_SEASONS
-      g.stuckSeasons = 0
-      g.momentum = 0
-      L(g, 'ev', `你把本命锁进英雄池最底下，开始练新东西。前两周被喷得很惨。`)
-      unlock(g, 'switch_pool')
-    } else if (a === 'coach' && canCoach) {
-      g.cash -= COACH_COST
-      g.momentum += COACH_MOMENTUM
-      L(g, 'ev', `你花 ${fmt(COACH_COST)} 找了个退役选手复盘。他说：「你每一波都在同一个位置死。」`)
-      unlock(g, 'coached')
-    } else L(g, 'sys', '你决定就这么打。')
-    yield 'step'
-  }
-
-  // 10. 死线：热情不够下一季，且卡墙
   if (g.passion < nextGames && g.passion > 0 && (g.stuckSeasons > 0 || g.momentum > 0) && wallNow && !g.choiceUsed.deadline) {
     g.choiceUsed.deadline = true
     yield* deadline(g, wallNow.into)
     if (g.over) return
   }
 
-  // 11. 退坑
+  // 10. 退坑
   if (g.passion <= 0) {
     L(g, 'sys', '你卸载了。')
     yield 'step'
@@ -550,21 +519,10 @@ function* deadline(g: LifeState, into: MajorTier): Generator<Tick, void, void> {
 
 /* ———————————— 被发掘 ———————————— */
 
-function* scouting(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
-  const l = L(g, 'career', `【私信】一个自称青训教练的人：「看了你最近的场次，有兴趣来试训吗？」`)
+function* scouting(g: LifeState): Generator<Tick, void, void> {
+  const l = L(g, 'career', `【私信】一个自称青训教练的人：「看了你最近的场次，有兴趣来试训吗？」${dirtyCount(g) ? '你知道自己账号上有什么，还是回了「好」。' : '你回了「好」。'}`)
   H(g, l)
-  g.choice = {
-    id: 'scout', title: '有人找你',
-    body: `${g.age} 岁，${rankLabel(g.rank)}。对方发来一个战队基地的定位。${dirtyCount(g) ? '<br><span class="warn">签约前有背调。你知道自己账号上有什么。</span>' : ''}`,
-    options: [
-      { id: 'go', label: '去试训', cls: 'primary', sub: '过了就进职业，这辈子换一条路' },
-      { id: 'no', label: '不去，继续打天梯', sub: '以后未必还有人找' },
-    ],
-  }
-  yield 'choice'
-  const a = answer ?? 'go'
-  answer = null
-  if (a === 'no') { g.refusedTrials++; L(g, 'sys', '你说算了。对方回了个「好」。'); yield 'step'; return }
+  yield 'step'
   L(g, 'career', '你坐了六个小时高铁。基地在写字楼十七层，训练室里六台电脑。')
   yield 'step'
   let p = clamp(TRIAL_BASE + TALENT_INFO[g.talent].breakBonus + (majorIndex(g.rank.major) >= majorIndex('champ') ? 0.15 : 0) + (g.rank.major === 'top' ? 0.15 : 0), 0.2, 0.95)
@@ -579,81 +537,52 @@ function* scouting(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
     g.scouted = true
     g.scoutedAt = { age: g.age, rank: { ...g.rank } }
     unlock(g, 'scouted')
+    g.over = true
     yield 'step'
-    yield* proPhase(meta, g)
   } else {
-    g.refusedTrials++
     L(g, 'warn', '试训没过。教练说：「再练练，明年再来。」')
     passionAdd(g, 40)
     yield 'step'
   }
 }
 
-/* ———————————— 职业阶段：接在同一条时间线上滚 ———————————— */
-
-function* proPhase(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
-  meta.cash = g.cash
-  meta.fans = g.fans
-  meta.dirty = { ...g.dirty }
-  meta.cashLow = Math.min(0, g.cash)
-  startCareer(meta, g.age, g.talent)
-  if (perks(meta).has('pro')) meta.pro.talentBonus += 3
-  const p = meta.pro
-  const known = new Set(Object.keys(meta.achievements))
-  const sync = (seen: { log: number; hl: number }) => {
-    for (; seen.log < p.log.length; seen.log++) g.logs.push(p.log[seen.log])
-    for (; seen.hl < p.highlights.length; seen.hl++) g.highlights.push(p.highlights[seen.hl])
-    for (const k of Object.keys(meta.achievements)) if (!known.has(k)) { known.add(k); g.achieved[k] = true; g.newAchievements.push(k) }
-  }
-  let years = 0
-  while (p.active && years < 20) {
-    beginYear(meta)
-    const seen = { log: 0, hl: 0 }
-    while (proStep() !== 'done') { sync(seen); yield 'step' }
-    sync(seen)
-    if (p.ending) break
-    commitYear(meta)
-    years++
-    g.age = p.age
-    yield 'step'
-  }
-  g.age = p.age
-  g.cash = meta.cash
-  g.fans = Math.max(g.fans, p.fame)
-  g.ending = p.ending ?? undefined
-  g.over = true
-  if (g.ending) {
-    L(g, 'ending', `【结局】${g.ending.title}`)
-    for (const v of g.ending.verse) L(g, 'verse', v)
-  }
-}
-
 /* ———————————— 写档 ———————————— */
 
-/** 人生结束写回全局档；返回是否进过职业 */
-export function commitLife(g: LifeState, meta: MetaSave): boolean {
+/** 这辈子的经验：最高段位 + 被发掘 */
+export function lifeExp(g: LifeState): number {
+  return EXP_BY_MAJOR[scoreToRank(g.peakScore).major] + (g.scouted ? EXP_PRO.scouted : 0)
+}
+
+/**
+ * 人生结束写回全局档；返回是否进职业（进了就由 pro.ts 接手，另开一页）。
+ * 返回值里带这辈子的经验与升级数，给结算页用。
+ */
+export function commitLife(g: LifeState, meta: MetaSave): { toPro: boolean; exp: number; ups: number } {
   meta.runs++
-  meta.growth.runs++
   meta.talentLog[g.talent] = (meta.talentLog[g.talent] ?? 0) + 1
   if (!meta.bestTalent || TALENT_ORDER.indexOf(g.talent) > TALENT_ORDER.indexOf(meta.bestTalent)) meta.bestTalent = g.talent
   meta.bestPeakScore = Math.max(meta.bestPeakScore, g.peakScore)
   if (g.dirty.cheatSeasons > 0) meta.cheatLives++
   if (meta.proBlockLives > 0) meta.proBlockLives--
-
-  const peakMajor = scoreToRank(g.peakScore).major
-  for (const m of MAJOR_ORDER) {
-    if (majorIndex(m) < majorIndex('plat') || majorIndex(m) > majorIndex(peakMajor)) continue
-    if (!meta.reached[m]) { meta.reached[m] = true; meta.growth.milestones += MILESTONE_POINTS }
-  }
-  if (g.scouted) { meta.scoutedTimes++; if (meta.scoutedTimes === 1) meta.growth.milestones += MILESTONE_POINTS }
-  meta.growth.milestones = Math.min(GROWTH_CAP, meta.growth.milestones)
+  if (g.scouted) meta.scoutedTimes++
 
   for (const id of g.newAchievements) meta.achievements[id] = true
-  recountHeroPool(meta)
+
+  const exp = lifeExp(g)
+  const ups = addExp(meta.growth, exp)
 
   if (g.ending) {
     meta.lastEndingId = g.ending.id
-    if (!g.scouted) meta.endings[g.ending.id] = (meta.endings[g.ending.id] ?? 0) + 1
+    meta.endings[g.ending.id] = (meta.endings[g.ending.id] ?? 0) + 1
   }
-  return g.scouted
+
+  if (g.scouted) {
+    meta.cash = g.cash
+    meta.fans = g.fans
+    meta.dirty = { ...g.dirty }
+    meta.cashLow = Math.min(0, g.cash)
+    startCareer(meta, g.age, g.talent)
+    if (perks(meta).has('pro')) meta.pro.talentBonus += 3
+  }
+  return { toPro: g.scouted, exp, ups }
 }

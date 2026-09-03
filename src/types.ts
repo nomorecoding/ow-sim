@@ -53,12 +53,10 @@ export interface Achievement {
 
 /** 全局成长：只改天赋分布，不改单局曲线 */
 export interface Growth {
-  /** 打过的人生数（每局 +1，上限见常量） */
-  runs: number
-  /** 英雄池（每 5 个成就 +1） */
-  heroPool: number
-  /** 里程碑：首次触及各大段 / 被发掘（每项 +2） */
-  milestones: number
+  /** 等级：每级让天才 / 怪物概率 +0.1% */
+  level: number
+  /** 当前等级内已攒的经验 */
+  exp: number
 }
 
 /** 黑历史：天梯里做的脏事，职业模式里付账 */
@@ -251,6 +249,9 @@ export interface ProState {
   highlights: LogLine[]
   /** 待处理抉择 */
   choice: ProChoice | null
+  /** 生涯结束时获得的经验 / 升级数（结算页用） */
+  endExp?: number
+  endUps?: number
   /** 本年是否已结算（等玩家点「下一年」） */
   yearDone: boolean
   /** 本年内 Stage 进度 1–3，0 = 年初 */

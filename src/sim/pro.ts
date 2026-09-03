@@ -5,13 +5,14 @@
  */
 import type { Form, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
+  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
   PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE,
   SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
 import { clamp, irand, rand } from './rank'
 import { ACH_MAP } from '../data/achievements'
 import { buildProEnding, type ProEndReason } from '../data/endings'
+import { addExp } from '../data/talent'
 
 /* ———————————— 档 ———————————— */
 
@@ -145,6 +146,11 @@ function endCareer(meta: MetaSave, reason: ProEndReason) {
   meta.lastEndingId = p.ending.id
   H(meta, { cls: 'ending', text: `【${p.ending.title}】` })
   ach(meta, `pro_end_${p.ending.id}`)
+  // 职业成就 → 经验（线性）
+  const t = p.titles
+  const exp = p.yearsPlayed * EXP_PRO.year + t.regional * EXP_PRO.regional + t.intl * EXP_PRO.intl + t.world * EXP_PRO.world + t.fmvp * EXP_PRO.fmvp
+  p.endExp = exp
+  p.endUps = addExp(meta.growth, exp)
 }
 
 function lifetimeBan(meta: MetaSave, why: string) {

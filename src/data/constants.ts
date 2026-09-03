@@ -70,7 +70,7 @@ export const FREE_CASH = 300000
 export const TALENT_ORDER: TalentTier[] = ['barrel', 'normal', 'something', 'genius', 'monster']
 
 export const TALENT_INFO: Record<TalentTier, {
-  name: string; base: number; grow: number; cls: string
+  name: string; base: number; cls: string
   /** 季斜率均值（分）与噪声 σ */
   slope: number; sigma: number
   /** 突破检定加成 */
@@ -79,19 +79,28 @@ export const TALENT_INFO: Record<TalentTier, {
   start: [number, number]
   range: string
 }> = {
-  barrel:    { name: '木桶',     base: 32,  grow: -0.025, cls: 'tal-0', slope: 50,  sigma: 60,  breakBonus: -0.10, start: [0, 700],     range: '天花板在黄金附近' },
-  normal:    { name: '普通',     base: 40,  grow: 0,      cls: 'tal-1', slope: 100, sigma: 70,  breakBonus: 0,     start: [200, 1000],  range: '白金–翡翠是常态' },
-  something: { name: '有点东西', base: 18,  grow: 0.04,   cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
-  genius:    { name: '天才',     base: 7,   grow: 0.06,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
-  monster:   { name: '怪物',     base: 1.5, grow: 0.07,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '顶尖 500 的料' },
+  barrel:    { name: '木桶',     base: 32,  cls: 'tal-0', slope: 50,  sigma: 60,  breakBonus: -0.10, start: [0, 700],     range: '天花板在黄金附近' },
+  normal:    { name: '普通',     base: 41,  cls: 'tal-1', slope: 100, sigma: 70,  breakBonus: 0,     start: [200, 1000],  range: '白金–翡翠是常态' },
+  something: { name: '有点东西', base: 18,  cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
+  genius:    { name: '天才',     base: 7,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
+  monster:   { name: '怪物',     base: 2,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '顶尖 500 的料' },
 }
 
-export const GROWTH_CAP = 30
-export const GROWTH_RUNS_CAP = 12
-/** 每 N 个成就 → 英雄池 +1 */
-export const ACH_PER_HERO_POOL = 5
-/** 里程碑成长点：首次触及各大段 / 被发掘 */
-export const MILESTONE_POINTS = 1
+/* ———————————— 经验 / 等级：只改天才、怪物的概率 ———————————— */
+/** 每个成就、每一级 → 天才 + 怪物合计 +0.1%（从木桶 / 普通里挪） */
+export const TALENT_SHIFT_PER = 0.1
+/** 挪出去的部分里，天才 : 怪物 */
+export const TALENT_SHIFT_GENIUS = 0.65
+/** 合计最多挪多少个百分点 */
+export const TALENT_SHIFT_CAP = 15
+/** 升级所需经验：第 n 级 = BASE + n × STEP（线性递增） */
+export const LEVEL_EXP_BASE = 30
+export const LEVEL_EXP_STEP = 10
+/** 一辈子的经验 = 最高段位 + 职业成就（线性） */
+export const EXP_BY_MAJOR: Record<MajorTier, number> = {
+  bronze: 4, silver: 6, gold: 9, plat: 12, emerald: 16, diamond: 21, master: 28, gm: 36, champ: 46, top: 58,
+}
+export const EXP_PRO = { scouted: 15, year: 4, regional: 12, intl: 20, world: 35, fmvp: 25 }
 
 /** 段位衰减：越高涨得越慢 */
 export const SLOPE_DECAY: Record<MajorTier, number> = {

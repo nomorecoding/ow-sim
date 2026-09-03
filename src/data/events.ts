@@ -5,7 +5,7 @@
 import type { LifeState, LogLine } from '../types'
 import { irand, rand, rankScore } from '../sim/rank'
 import { unlock } from '../sim/ach'
-import { FREE_CASH } from './constants'
+import { COACH_COST, COACH_MOMENTUM, FREE_CASH, SWITCH_POOL_DROP, SWITCH_POOL_SEASONS } from './constants'
 
 export interface LifeEvent {
   id: string
@@ -56,6 +56,21 @@ export const COMMON_EVENTS: LifeEvent[] = [
   { id: 'rot', weight: (g) => m(g).rot / 30, run: () => '你蹲了一整局角落，队友以为你掉线了。' },
   { id: 'trash', weight: (g) => m(g).trash / 30, run: () => '被队友举报「消极比赛」。系统提示：已受理。' },
   { id: 'brainless', weight: (g) => m(g).brainless / 35, run: (g) => { g.mmr -= 20; return '你在对面重生点门口站了一波。' } },
+  // —— 卡墙时的自救（原抉择改成自动事件，一辈子各一次）——
+  { id: 'switch_pool', weight: 5, when: (g) => g.stuckSeasons >= 1 && !g.tally.switch_pool, hl: true, run: (g) => {
+    g.mmr -= SWITCH_POOL_DROP
+    g.spurtSeasons = SWITCH_POOL_SEASONS
+    g.stuckSeasons = 0
+    g.momentum = 0
+    unlock(g, 'switch_pool')
+    return `卡得太久，你把本命锁进英雄池最底下开始练新东西。前两周被喷得很惨，之后 ${SWITCH_POOL_SEASONS} 季涨得飞快。`
+  } },
+  { id: 'coached', weight: 4, when: (g) => g.stuckSeasons >= 1 && g.cash >= COACH_COST && !g.tally.coached, hl: true, run: (g) => {
+    g.cash -= COACH_COST
+    g.momentum += COACH_MOMENTUM
+    unlock(g, 'coached')
+    return `你花 ${fmt(COACH_COST)} 找了个退役选手复盘。他说：「你每一波都在同一个位置死。」下季突破概率高了一截。`
+  } },
   { id: 'streak_win', weight: 3, run: (g) => { passion(g, 40); g.mmr += 15; unlock(g, 'streak10'); return `十连胜。你截了图发朋友圈，没人点赞。${pd(40)}。` } },
   { id: 'streak_lose', weight: 3, run: (g) => { passion(g, -45); return `十连跪。你把鼠标扣在桌上，垫子裂了。${pd(-45)}。` } },
   { id: 'afk_mate', weight: 3, run: (g) => { passion(g, -20); return `决胜图队友挂机。你一个人守了两分钟。${pd(-20)}。` } },

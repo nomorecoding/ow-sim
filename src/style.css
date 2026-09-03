@@ -203,6 +203,18 @@ b { font-weight: 600; color: var(--bone); }
 }
 @keyframes shimmer { from { background-position: 0% 0; } to { background-position: 300% 0; } }
 
+/* 一根固定的条：各档占比 */
+.tal-stack { display: flex; height: 6px; background: var(--hair); overflow: hidden; }
+.tal-stack i { display: block; height: 100%; background: currentColor; transition: width 0.6s ease; min-width: 1px; }
+.tal-stack i + i { margin-left: 1px; }
+.tal-stack .tal-4 { background: linear-gradient(90deg, #e8d7a8, #c9a55c 40%, #f0e4c0 70%, #c9a55c); -webkit-text-fill-color: initial; animation: none; }
+.tal-legend { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-family: var(--display); font-size: 0.7rem; letter-spacing: 0.18em; }
+.tal-legend .tal-4 { background: none; -webkit-text-fill-color: var(--brass); animation: none; }
+.exp-line { display: flex; align-items: center; gap: 10px; font-size: 0.74rem; color: var(--bone-dim); }
+.exp-line .lv { font-family: var(--display); letter-spacing: 0.16em; }
+.exp-line .exp-bar { width: 90px; height: 2px; background: var(--hair); }
+.exp-line .exp-bar i { display: block; height: 100%; background: var(--brass); transition: width 0.6s ease; }
+
 /* 一行版：下辈子投胎 / 传承 */
 .tal-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.78rem; }
 .tal-line .talent-badge { padding-left: 8px; letter-spacing: 0.14em; }
