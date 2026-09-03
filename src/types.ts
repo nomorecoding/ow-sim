@@ -10,16 +10,11 @@ export interface RankState {
   rp: number
 }
 
-/** 身份：路人 / 代练 / 外挂 */
-export type Identity = 'casual' | 'boost' | 'cheat'
-
-export type SeasonPhase = 'placement' | 'regular' | 'rivalry' | 'settle'
-
-/** 人生阶段（天梯模式背景）：决定赛季额度与收支 */
-export type LifeStage = 'student' | 'worker' | 'dropout' | 'free'
-
-/** 本季天赋档（= 隐藏 MMR 区间） */
+/** 天赋档：决定实力成长斜率分布与突破加成，一辈子不变 */
 export type TalentTier = 'barrel' | 'normal' | 'something' | 'genius' | 'monster'
+
+/** 人生阶段：决定每季热情消耗与斜率 */
+export type LifeStage = 'student' | 'fulltime' | 'worker' | 'free'
 
 export interface PersonaMetrics {
   brainless: number
@@ -41,31 +36,6 @@ export interface LogLine {
   text: string
 }
 
-/** 雇来的帮手：代练（替你打）或陪玩（和你一起打，可多人） */
-export interface Helper {
-  kind: 'boost' | 'escort'
-  /** HELPER_TIERS 的 id */
-  tier: string
-  /** 陪玩人数 1–4；代练固定 1 */
-  count: number
-  /** 剩余把数 */
-  left: number
-}
-
-/** 一把对局后系统给出的修正词（对应 OW2 真实标签） */
-export type RankModifier =
-  | 'calibration' | 'uphill' | 'consolation' | 'reversal' | 'expected'
-  | 'pressure_up' | 'pressure_down' | 'win_trend' | 'lose_trend'
-  | 'demotion_protect' | 'demotion' | 'wide'
-
-export interface MatchResult {
-  win: boolean
-  rpDelta: number
-  modifiers: RankModifier[]
-  log: LogLine[]
-  events: LogLine[]
-}
-
 export interface SeasonEnding {
   id: string
   title: string
@@ -81,14 +51,14 @@ export interface Achievement {
   honor?: boolean
 }
 
-/** 天梯全局成长项：只改天赋分布，不改单季胜率 */
+/** 全局成长：只改天赋分布，不改单局曲线 */
 export interface Growth {
-  /** 赛季经验（每季 +1，上限 15） */
-  seasons: number
+  /** 打过的人生数（每局 +1，上限见常量） */
+  runs: number
   /** 英雄池（每 5 个成就 +1） */
   heroPool: number
-  /** 设备等级 0–3（现金买） */
-  gear: number
+  /** 里程碑：首次触及各大段 / 被发掘（每项 +2） */
+  milestones: number
 }
 
 /** 黑历史：天梯里做的脏事，职业模式里付账 */
@@ -101,87 +71,91 @@ export interface DirtyHistory {
   cheatSeasons: number
 }
 
-/* ———————————————————— 天梯模式：一个赛季 ———————————————————— */
-
-export interface GameState {
-  persona: Persona
-  identity: Identity
-  rank: RankState
-  /** 本季天赋档 */
-  talent: TalentTier
-  /** 本季隐藏 MMR（分数尺度） */
-  mmr: number
-  /** 匹配系统对你的置信度 0–1，前 ~30 把校准 */
-  conf: number
-  /** 定级锚点分（来自上赛季 / 软重置） */
-  anchorScore: number
-  /** 当前小段是否已用掉保级保护 */
-  protectedDiv: string | null
-
-  age: number
-  year: number
-  /** 年内第几个赛季 1–6 */
-  seasonInYear: number
-
-  cash: number
-  credit: number
-  compPoints: number
-  /** 人气：只影响收入事件，职业模式带入 */
-  fans: number
-  playtime: number
-  envPollution: number
-  redBox: boolean
-  muteLeft: number
-  muteCount: number
-  dirty: DirtyHistory
-  /** 本季是否开过挂（写入黑历史） */
-  cheatedThisSeason: boolean
-  /** 历史最低现金 */
-  cashLow: number
-  reportStacks: number
-  banned: boolean
-  season: number
-  phase: SeasonPhase
-  week: number
-  quotaLeft: number
-  quotaMax: number
-  placementLeft: number
-  placementWins: number
-  matchesThisSeason: number
-  wins: number
-  cloudMudAim: boolean
-  logs: LogLine[]
-  events: LogLine[]
-  helper: Helper | null
-  /** 本季最近一次买的套餐（一键续同款） */
-  lastHelper: Helper | null
-  /** 本季是否已弹过黑市提醒 */
-  marketPrompted: boolean
-  /** 待弹出的黑市提醒文案（UI 消费后清空） */
-  marketHint: string | null
-  /** 帮手刚打完套餐：UI 弹「续单 / 提前结束 / 自己打」 */
-  helperDone: boolean
-  /** 提前结束赛季锁定段位 */
-  endedEarly: boolean
-  /** 赛季高光（结算页展示） */
-  highlights: LogLine[]
-  winStreak: number
-  loseStreak: number
-  bestStreak: number
-  worstStreak: number
-  stage: LifeStage
-  dirtyThisSeason: boolean
-  boostEarned: number
-  quotaModDelta: number
-  achieved: Record<string, boolean>
-  newAchievements: string[]
-  peakScore: number
-  /** 修正词计数（成就用） */
-  modCount: Partial<Record<RankModifier, number>>
-  ending?: SeasonEnding
+/** 需要玩家点一下的抉择 */
+export interface Choice {
+  id: string
+  title: string
+  body: string
+  options: Array<{ id: string; label: string; cls?: string; sub?: string }>
 }
 
-/* ———————————————————— 职业模式：一段生涯 ———————————————————— */
+/* ———————————————————— 一段人生（天梯阶段） ———————————————————— */
+
+export interface LifeState {
+  persona: Persona
+  talent: TalentTier
+  /** 隐藏真实实力（分数尺度） */
+  mmr: number
+  /** 显示段位 */
+  rank: RankState
+  /** 实力顶到墙时累积的「势」 */
+  momentum: number
+  /** 连续卡墙季数 */
+  stuckSeasons: number
+  /** 本局卡过墙的总季数（成就） */
+  stuckTotal: number
+  /** 曾触及的最高段位分（显示段位） */
+  peakScore: number
+  /** 曾触及的最高实力 */
+  peakMmr: number
+
+  age: number
+  /** 第几季（从 1 起） */
+  season: number
+  /** 年内第几季 1–4 */
+  seasonInYear: number
+  stage: LifeStage
+
+  /** 热情：还愿意打多少把 */
+  passion: number
+  passionMax: number
+  /** 本季打的把数 */
+  gamesThisSeason: number
+  gamesTotal: number
+
+  cash: number
+  fans: number
+  /** 匹配环境污染（隐藏） */
+  pollution: number
+  /** 竞技点（隐藏计数 → 金枪彩蛋） */
+  compPoints: number
+  goldGuns: number
+  jadeThisYear: boolean
+  muteCount: number
+  /** 黑市过墙后留下的举报堆栈 */
+  reportStacks: number
+  /** 设备等级 0–3：突破加成 */
+  gear: number
+  /** 一次性练枪加成 */
+  trainBonus: number
+  /** 车队 / 教练 buff（剩余季数） */
+  crewSeasons: number
+  /** 段位虚高（陪玩体验）：本季 SR 额外 + */
+  fakeBoost: number
+
+  dirty: DirtyHistory
+  boostEarned: number
+  /** 是否用过黑市过墙 */
+  usedMarket: boolean
+  banned: boolean
+  /** 被发掘 → 进职业 */
+  scouted: boolean
+  /** 拒绝过试训的次数 */
+  refusedTrials: number
+  /** 是否已做过瓶颈抉择 / 死线抉择（一局各最多一次） */
+  choiceUsed: Record<string, boolean>
+
+  logs: LogLine[]
+  highlights: LogLine[]
+  choice: Choice | null
+  achieved: Record<string, boolean>
+  newAchievements: string[]
+  ending?: SeasonEnding
+  /** 本局结束（含转入职业） */
+  over: boolean
+}
+
+/* ———————————————————— 职业阶段：一段生涯 ———————————————————— */
 
 /** 战队 */
 export interface Team {
@@ -217,24 +191,17 @@ export interface ProOffer {
   role: 'starter' | 'bench'
 }
 
-/** 需要玩家点一下的抉择（转会窗 / 某些事件） */
-export interface ProChoice {
-  id: string
-  title: string
-  body: string
-  options: Array<{ id: string; label: string; cls?: string; sub?: string }>
-}
+export type ProChoice = Choice
 
 export interface ProTitles {
   regional: number
   intl: number
   world: number
   worldCup: number
+  fmvp: number
 }
 
 export interface ProState {
-  /** 天梯里触及宗师 / 打满 N 季后解锁 */
-  unlocked: boolean
   /** 第几次生涯 */
   runs: number
   /** 生涯进行中 */
@@ -255,12 +222,14 @@ export interface ProState {
   yearScore: number
   history: StageResult[]
   titles: ProTitles
-  /** 接过的假赛次数（每个 Stage 都可能被翻） */
+  /** 接过的假赛次数 */
   fixes: number
   /** 禁赛剩余 Stage 数 */
   suspended: number
   /** 跨生涯成长点：只改状态档分布 */
   growth: number
+  /** 本生涯天赋带来的成长修正 */
+  talentBonus: number
   /** 本生涯职业收入（地狱归来判定） */
   income: number
   /** 本生涯是否始终干净 */
@@ -270,7 +239,6 @@ export interface ProState {
   /** 终身禁赛（跨生涯：本存档职业模式永闭） */
   lifetimeBan: boolean
   banReason?: string
-  /** 生涯统计（结局用） */
   yearsPlayed: number
   /** 本年日志与高光（页面刷新丢失，无妨） */
   log: LogLine[]
@@ -288,54 +256,32 @@ export interface ProState {
 /* ———————————————————— 全局档 ———————————————————— */
 
 export interface MetaSave {
-  playtimeTotal: number
-  seasonsPlayed: number
+  runs: number
   achievements: Record<string, boolean>
   endings: Record<string, number>
   lastEndingId?: string
   speed: number
   manual: boolean
 
-  /* —— 人生（天梯模式背景） —— */
-  age: number
-  year: number
-  seasonInYear: number
   growth: Growth
   /** 历史天赋记录（各档次数） */
   talentLog: Record<TalentTier, number>
   bestTalent?: TalentTier
+  /** 首次触及各大段（里程碑成长点） */
+  reached: Partial<Record<MajorTier, boolean>>
+  /** 累计统计 */
+  bestPeakScore: number
+  scoutedTimes: number
 
-  /* —— 跨赛季延续 —— */
+  /* —— 本局带入职业阶段的东西（职业阶段结束后清零） —— */
   cash: number
-  credit: number
-  compPoints: number
   fans: number
   dirty: DirtyHistory
-  /** 历史最低现金（负债深度） */
   cashLow: number
-  /** 是否曾触及宗师（解锁职业模式） */
-  reachedGM: boolean
-  /** 开赛前在黑市预订的帮手（已付款，开局即上号） */
-  preorder?: Helper
-  goldGuns: number
-  jadeGuns: number
-  /** 今年是否已换过玉枪 */
-  jadeThisYear: boolean
-  envPollution: number
-  lastRank?: RankState
-  lastResetSeason: number
-  quotaMod: number
-  stage: LifeStage
-  boostEarnedTotal: number
-  bansTotal: number
-  accountNo: number
-  /** 弹窗邀约「下次再说」到第几个赛季为止 */
-  snooze: Record<string, number>
-  /** 一次性提示是否已看过 */
-  seen: Record<string, boolean>
-  /** 调试：下季强制天赋 */
+
+  /** 调试：下局强制天赋 */
   debugTalent?: TalentTier
 
-  /* —— 职业模式 —— */
+  /* —— 职业阶段 —— */
   pro: ProState
 }

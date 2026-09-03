@@ -1,4 +1,4 @@
-import type { Form, LifeStage, MajorTier, Persona, RankModifier, RankState, TalentTier, Team } from '../types'
+import type { Form, LifeStage, MajorTier, Persona, RankState, TalentTier, Team } from '../types'
 
 export const MAJOR_ORDER: MajorTier[] = [
   'bronze', 'silver', 'gold', 'plat', 'emerald', 'diamond', 'master', 'gm', 'champ', 'top',
@@ -22,54 +22,6 @@ export const GATE_MAJORS: MajorTier[] = [
   'bronze', 'silver', 'gold', 'plat', 'emerald', 'diamond', 'master', 'gm', 'champ',
 ]
 
-export const BASE_QUOTA = 200
-export const PLACEMENT_GAMES = 10
-export const REGULAR_WEEKS = 7
-export const RIVALRY_WEEKS = 1
-/** 每 N 赛季一次软重置（定级锚点向黄金/白金回拉） */
-export const SOFT_RESET_EVERY = 3
-/** 一年 6 个天梯赛季；OWCS 三个 Stage 落在第 2/4/6 季末 */
-export const SEASONS_PER_YEAR = 6
-export const DEFAULT_SPEED = 0.1
-export const MIN_SPEED = 0.05
-
-/** 初始资源 */
-export const INIT_CASH = 1600
-export const INIT_CREDIT = 60
-export const START_AGE_MIN = 16
-export const START_AGE_MAX = 18
-
-/** 竞技点 */
-export const CP_PER_WIN = 15
-export const CP_SEASON_REWARD: Record<MajorTier, number> = {
-  bronze: 65, silver: 125, gold: 250, plat: 500, emerald: 600, diamond: 750, master: 1200, gm: 1750, champ: 1750, top: 1750,
-}
-export const GUN_COST = 3000
-
-/**
- * 人生阶段（天梯模式背景）：额度修正 + 每赛季固定收支（单位：元；一个天梯赛季 ≈ 两个月）。
- */
-export const STAGE_INFO: Record<LifeStage, { name: string; quota: number; desc: string; income: [number, number]; expense: number }> = {
-  student: { name: '学生', quota: 20, desc: '课少时间多，靠生活费', income: [1200, 2000], expense: 0 },
-  worker: { name: '上班', quota: -40, desc: '下班才能打，工资稳', income: [9000, 14000], expense: 5000 },
-  dropout: { name: '辍学全职', quota: 60, desc: '全天肝，没收入，房租照付', income: [0, 0], expense: 2500 },
-  free: { name: '财富自由', quota: 70, desc: '理财收益够花', income: [6000, 9000], expense: 5000 },
-}
-
-/** 负债：每赛季利息 */
-export const DEBT_INTEREST = 0.06
-/** 财富自由门槛 */
-export const FREE_CASH = 300000
-/** 「地狱归来」阈值：曾负债到此以下 / 之后单年职业收入 */
-export const HELL_DEBT = -20000
-export const HELL_RETURN_INCOME = 300000
-/** 职业模式解锁：触及宗师，或累计天梯赛季数 ≥ 此 */
-export const PRO_UNLOCK_SEASONS = 10
-
-/** 永久额度修正的上下限（控制总期望） */
-export const QUOTA_MOD_MIN = -50
-export const QUOTA_MOD_MAX = 60
-
 export const RANK_COLOR_CLASS: Record<MajorTier, string> = {
   bronze: 'rank-bronze',
   silver: 'rank-silver',
@@ -83,46 +35,134 @@ export const RANK_COLOR_CLASS: Record<MajorTier, string> = {
   top: 'rank-top',
 }
 
-/* ———————————— 天赋（隐藏 MMR） ———————————— */
+export const DEFAULT_SPEED = 0.35
+export const MIN_SPEED = 0.05
+
+/* ———————————— 人生 ———————————— */
+
+export const START_AGE = 16
+export const SEASONS_PER_YEAR = 4
+/** 强制退坑年龄 */
+export const QUIT_AGE = 31
+/** 被发掘的年龄上限 */
+export const SCOUT_MAX_AGE = 21
+
+/** 开局热情 */
+export const PASSION_START: [number, number] = [1000, 1300]
+/** 新的一年：新赛季新鲜感 */
+export const NEW_YEAR_PASSION = 40
+/** 热情预警：低于下季消耗 × 此倍数 */
+export const PASSION_WARN_MULT = 1.5
+
+/** 人生阶段：每季热情消耗（≈ 把数）、斜率系数 */
+export const STAGE_INFO: Record<LifeStage, { name: string; games: number; slope: number; desc: string }> = {
+  student: { name: '学生', games: 100, slope: 1.0, desc: '课少时间多' },
+  fulltime: { name: '全职', games: 150, slope: 1.2, desc: '全天肝，房租自己付' },
+  worker: { name: '上班', games: 55, slope: 0.75, desc: '下班才能打' },
+  free: { name: '自由', games: 90, slope: 1.0, desc: '不用上班了' },
+}
+
+/** 财富自由门槛（基本只有职业奖金能达到） */
+export const FREE_CASH = 300000
+
+/* ———————————— 天赋（终身） ———————————— */
 
 export const TALENT_ORDER: TalentTier[] = ['barrel', 'normal', 'something', 'genius', 'monster']
 
-export const TALENT_INFO: Record<TalentTier, { name: string; range: string; min: number; max: number; base: number; grow: number; cls: string }> = {
-  //                                                        分数区间（大段 500）        基础权重  每成长点系数
-  barrel:    { name: '木桶',     range: '青铜–黄金',   min: 200,  max: 1500, base: 32, grow: -0.025, cls: 'tal-0' },
-  normal:    { name: '普通',     range: '白金–翡翠',   min: 1500, max: 2500, base: 40, grow: 0,      cls: 'tal-1' },
-  something: { name: '有点东西', range: '钻石–大师',   min: 2500, max: 3500, base: 18, grow: 0.04,   cls: 'tal-2' },
-  genius:    { name: '天才',     range: '宗师–英杰',   min: 3500, max: 4500, base: 7,  grow: 0.06,   cls: 'tal-3' },
-  monster:   { name: '怪物',     range: '顶尖 500',    min: 4500, max: 4600, base: 1.5, grow: 0.07,  cls: 'tal-4' },
+export const TALENT_INFO: Record<TalentTier, {
+  name: string; base: number; grow: number; cls: string
+  /** 季斜率均值（分）与噪声 σ */
+  slope: number; sigma: number
+  /** 突破检定加成 */
+  breakBonus: number
+  /** 起点分区间 */
+  start: [number, number]
+  range: string
+}> = {
+  barrel:    { name: '木桶',     base: 32,  grow: -0.025, cls: 'tal-0', slope: 50,  sigma: 60,  breakBonus: -0.10, start: [0, 700],     range: '天花板在黄金附近' },
+  normal:    { name: '普通',     base: 40,  grow: 0,      cls: 'tal-1', slope: 100, sigma: 70,  breakBonus: 0,     start: [200, 1000],  range: '白金–翡翠是常态' },
+  something: { name: '有点东西', base: 18,  grow: 0.04,   cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
+  genius:    { name: '天才',     base: 7,   grow: 0.06,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
+  monster:   { name: '怪物',     base: 1.5, grow: 0.07,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '顶尖 500 的料' },
 }
 
 export const GROWTH_CAP = 30
-export const GROWTH_SEASONS_CAP = 15
+export const GROWTH_RUNS_CAP = 12
 /** 每 N 个成就 → 英雄池 +1 */
 export const ACH_PER_HERO_POOL = 5
+/** 里程碑成长点：首次触及各大段 / 被发掘 */
+export const MILESTONE_POINTS = 1
 
-export const GEAR_LEVELS = [
-  { level: 1, name: '换鼠标 + 144Hz', cost: 1200, desc: '成长 +1' },
-  { level: 2, name: '光纤 + 有线', cost: 3500, desc: '成长 +1' },
-  { level: 3, name: '240Hz + 人体工学', cost: 9000, desc: '成长 +1' },
-]
-
-/* ———————————— 修正词（对应 OW2 真实标签） ———————————— */
-
-export const MOD_LABEL: Record<RankModifier, { text: string; dir: 'up' | 'down' | 'both' }> = {
-  calibration: { text: '校准', dir: 'both' },
-  uphill: { text: '逆风局', dir: 'up' },
-  consolation: { text: '安慰奖', dir: 'up' },
-  reversal: { text: '大逆转', dir: 'down' },
-  expected: { text: '预期', dir: 'down' },
-  pressure_up: { text: '压力', dir: 'up' },
-  pressure_down: { text: '压力', dir: 'down' },
-  win_trend: { text: '连胜趋势', dir: 'up' },
-  lose_trend: { text: '连败趋势', dir: 'down' },
-  demotion_protect: { text: '保级保护', dir: 'up' },
-  demotion: { text: '降级', dir: 'down' },
-  wide: { text: '宽组', dir: 'down' },
+/** 段位衰减：越高涨得越慢 */
+export const SLOPE_DECAY: Record<MajorTier, number> = {
+  bronze: 1.0, silver: 0.95, gold: 0.9, plat: 0.8, emerald: 0.7, diamond: 0.55, master: 0.42, gm: 0.32, champ: 0.25, top: 0.2,
 }
+
+/** 年龄系数（斜率乘数，超过 30 岁额外每季自然退化） */
+export function ageMult(age: number): number {
+  if (age <= 18) return 1.15
+  if (age <= 21) return 1.05
+  if (age <= 24) return 0.9
+  if (age <= 27) return 0.65
+  if (age <= 30) return 0.35
+  return 0
+}
+export const AGE_DECAY_PER_SEASON = 40
+
+/* ———————————— 段位墙 ———————————— */
+
+/** 墙的基础突破概率：key 为要进入的大段 */
+export const WALL_BASE: Partial<Record<MajorTier, number>> = {
+  silver: 0.85, gold: 0.8, plat: 0.7, emerald: 0.6, diamond: 0.4, master: 0.3, gm: 0.22, champ: 0.15, top: 0.1,
+}
+/** 过墙热情奖励 */
+export const WALL_PASSION: Partial<Record<MajorTier, number>> = {
+  silver: 60, gold: 90, plat: 120, emerald: 150, diamond: 200, master: 260, gm: 320, champ: 380, top: 450,
+}
+/** 「势」换概率：每 N 分 +1% */
+export const MOMENTUM_PER_PCT = 4
+/** 顶尖墙额外要求本季把数 */
+export const TOP_MIN_GAMES = 40
+
+/** 设备三级：突破 +0.08 / 级 */
+export const GEAR_LEVELS = [
+  { level: 1, name: '换鼠标 + 144Hz', cost: 1200 },
+  { level: 2, name: '光纤 + 有线', cost: 3500 },
+  { level: 3, name: '240Hz + 人体工学', cost: 9000 },
+]
+export const GEAR_BONUS = 0.08
+export const TRAIN_BONUS = 0.15
+export const TRAIN_PASSION_COST = 60
+export const CREW_BONUS = 0.1
+
+/* ———————————— 死线抉择：黑市 ———————————— */
+
+/** 代练价格文案：按你的段位选档 */
+export const BOOSTER_QUOTE: Array<{ maxMajor: MajorTier; name: string; price: number }> = [
+  { maxMajor: 'plat', name: '钻石代练', price: 12 },
+  { maxMajor: 'emerald', name: '大师代练', price: 20 },
+  { maxMajor: 'diamond', name: '宗师代练', price: 35 },
+  { maxMajor: 'master', name: '英杰代练', price: 60 },
+  { maxMajor: 'top', name: 'OWCS 选手代练', price: 120 },
+]
+export const MARKET_BOOST_PASS = 0.9
+export const MARKET_BOOST_BAN = 0.2
+export const MARKET_CHEAT_PASS = 0.97
+export const MARKET_CHEAT_BAN = 0.5
+/** 黑市过墙后每季补封概率 */
+export const REPORT_BAN_PER_SEASON = { boost: 0.05, cheat: 0.12 }
+/** 代练收入到此 → 「上岸」结局 */
+export const BOOST_LANDED_CASH = 100000
+
+/* ———————————— 竞技点彩蛋 ———————————— */
+export const CP_PER_WIN = 15
+export const GUN_COST = 3000
+export const GUN_PASSION = 30
+
+/* ———————————— 被发掘 ———————————— */
+export const SCOUT_P: Partial<Record<MajorTier, number>> = { gm: 0.05, champ: 0.15, top: 0.3 }
+/** 试训通过基础概率（天赋加成另算） */
+export const TRIAL_BASE = 0.55
 
 /* ———————————— 职业线（OWCS 中国赛区） ———————————— */
 
@@ -148,13 +188,17 @@ export const INTL_MULT: Record<1 | 2 | 3, number> = { 1: 0.6, 2: 1.2, 3: 1.5 }
 export const INTL_NAME: Record<1 | 2 | 3, string> = { 1: 'Champions Clash', 2: '年中冠军赛 · EWC', 3: '世界总决赛' }
 export const INTL_PLACE: Record<1 | 2 | 3, string> = { 1: '首尔', 2: '利雅得', 3: '斯德哥尔摩' }
 
-/** 职业模式：开局年龄、可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
-export const PRO_START_AGE = 17
+/** 职业模式：可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
 export const PRO_RETIRE_MIN_AGE = 22
 export const PRO_DECLINE_AGE = 25
 export const PRO_FORCE_RETIRE_AGE = 31
 /** 无队一年的生活开销 */
 export const PRO_IDLE_EXPENSE = 15000
+/** 「地狱归来」阈值：曾负债到此以下 / 之后单生涯职业收入 */
+export const HELL_DEBT = -20000
+export const HELL_RETURN_INCOME = 300000
+/** FMVP：世界总决赛冠军且状态 ≥ 巅峰时摇 */
+export const FMVP_P: Partial<Record<Form, number>> = { peak: 0.35, god: 0.6 }
 
 /** 本年状态档（职业模式的天赋）：个人实力区间 + 基础权重 + 每成长点系数 */
 export const FORM_ORDER: Form[] = ['slump', 'ok', 'online', 'peak', 'god']
@@ -166,42 +210,11 @@ export const FORM_INFO: Record<Form, { name: string; min: number; max: number; b
   god:    { name: '神仙', min: 86, max: 99, base: 2,  grow: 0.06,  cls: 'tal-4' },
 }
 export const PRO_GROWTH_CAP = 30
+/** 天赋 → 职业成长起点修正 */
+export const TALENT_PRO_BONUS: Record<TalentTier, number> = { barrel: -4, normal: 0, something: 3, genius: 6, monster: 10 }
 
 /** 队友名池 */
 export const MATE_NAMES = ['小北', '阿豪', 'Kiro', '沁沁', '老白', 'Zed', '丸子', 'Nine', '阿远', 'Lumi', '大只', 'Vex', '卷卷', 'Sora', '皮皮', 'Yuki']
-
-/**
- * 帮手梯队（代练 / 陪玩共用）。idx 与大段序号同尺度：钻石 5 … 英杰 8，职业选手 10，OWL 级 11。
- * 胜率 = 0.5 + 0.08 × (帮手 idx − 你的大段 idx)：钻石代练打白金 ≈ 66%，英杰代练打白金 ≈ 90%，英杰代练打宗师 ≈ 58%。
- * 陪玩要和你一起打，同档比代练低 8 个点；可以 1–4 个人陪（5 排 4 陪 1 → 接近 95%），但宽组减收益。
- */
-export const HELPER_TIERS = [
-  { id: 'diamond', name: '钻石', idx: 5, boostPrice: 12, escortPrice: 8, boost: true },
-  { id: 'master', name: '大师', idx: 6, boostPrice: 20, escortPrice: 14, boost: true },
-  { id: 'gm', name: '宗师', idx: 7, boostPrice: 35, escortPrice: 25, boost: true },
-  { id: 'champ', name: '英杰', idx: 8, boostPrice: 60, escortPrice: 45, boost: true },
-  { id: 'pro', name: 'OWCS 选手', idx: 10, boostPrice: 120, escortPrice: 95, boost: true },
-  { id: 'owl', name: 'OWL 级 · 388/h', idx: 11, boostPrice: 0, escortPrice: 388, boost: false },
-] as const
-export type HelperTierId = (typeof HELPER_TIERS)[number]['id']
-/** 一次下单的把数 */
-export const HELPER_PACK_GAMES = 10
-export const ESCORT_MAX_COUNT = 4
-
-export const BOOST_JOBS = [
-  { id: 'fish', name: '接炸鱼单', payout: 300, pollution: 10, desc: '一单现金，污染+10' },
-  { id: 'plat', name: '接白金代练', payout: 800, pollution: 18, desc: '来钱快，印记更重' },
-  { id: 'high', name: '接大师墙高价单', payout: 2000, pollution: 28, desc: '连带封号风险最高' },
-]
-/** 代练身份每把入账 */
-export const BOOST_PER_MATCH: [number, number] = [40, 120]
-/** 代练累计收入到此 → 「上岸」结局 */
-export const BOOST_LANDED_CASH = 100000
-
-/** 赛季末最后 N 把进入控温窗口 */
-export const TEMPER_LAST_N = 12
-/** 进入控温窗口且接近门闸时，导向云泥结局的基础概率 */
-export const CLOUD_MUD_CHANCE = 0.36
 
 export const PERSONAS: Persona[] = [
   { id: 'diva', name: 'C位少爷', tagline: '资源该围着我转', metrics: { brainless: 55, rot: 15, rage: 85, delusion: 90, trash: 50 } },
@@ -240,19 +253,4 @@ export function majorIndex(m: MajorTier): number {
 export function isAtMajorGate(r: RankState): boolean {
   if (!GATE_MAJORS.includes(r.major)) return false
   return r.div === 1
-}
-
-/** 云泥目标：当前大段 1·99 */
-export function isCloudMudRank(r: RankState): boolean {
-  return isAtMajorGate(r) && r.rp === 99
-}
-
-export function cloudMudPair(r: RankState): { from: string; to: string } | null {
-  if (!isAtMajorGate(r)) return null
-  const nxt = nextMajor(r.major)
-  if (!nxt) return null
-  return {
-    from: `${MAJOR_NAME[r.major]}1`,
-    to: nxt === 'top' ? MAJOR_NAME[nxt] : `${MAJOR_NAME[nxt]}5`,
-  }
 }

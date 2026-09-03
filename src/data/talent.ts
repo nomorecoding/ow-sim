@@ -1,15 +1,11 @@
 import type { Growth, TalentTier } from '../types'
-import { GROWTH_CAP, GROWTH_SEASONS_CAP, PRO_DECLINE_AGE, TALENT_INFO, TALENT_ORDER } from './constants'
+import { GROWTH_CAP, GROWTH_RUNS_CAP, TALENT_INFO, TALENT_ORDER } from './constants'
 import { irand, rand } from '../sim/rank'
 
 /** 成长点：只改天赋分布 */
-export function growthPoints(g: Growth, age: number): number {
-  // 赛季经验每 2 季 +1
-  let p = Math.min(GROWTH_SEASONS_CAP, Math.floor(g.seasons / 2)) + g.heroPool + g.gear
-  // 年龄：25 岁后每年 -1，30 岁后每年再 -1
-  if (age >= PRO_DECLINE_AGE) p -= age - PRO_DECLINE_AGE + 1
-  if (age >= 30) p -= age - 30 + 1
-  return Math.max(-10, Math.min(GROWTH_CAP, p))
+export function growthPoints(g: Growth): number {
+  const p = Math.min(GROWTH_RUNS_CAP, g.runs) + g.heroPool + g.milestones
+  return Math.max(0, Math.min(GROWTH_CAP, p))
 }
 
 /** 各档权重 */
@@ -41,9 +37,9 @@ function rollTier(points: number): TalentTier {
   return 'normal'
 }
 
-/** 摇本季天赋：返回档位与隐藏 MMR */
+/** 摇一辈子的天赋：返回档位与起点实力 */
 export function rollTalent(points: number): { tier: TalentTier; mmr: number } {
   const tier = rollTier(points)
   const info = TALENT_INFO[tier]
-  return { tier, mmr: irand(info.min, info.max) }
+  return { tier, mmr: irand(info.start[0], info.start[1]) }
 }

@@ -11,8 +11,10 @@ node_modules
 dist
 dist-ssr
 single
-single
 *.local
+
+# 设计稿（含剧透）
+docs/
 
 # Editor directories and files
 .vscode/*

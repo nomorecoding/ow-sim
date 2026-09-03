@@ -3,11 +3,11 @@
  * 用生成器驱动，UI 每 tick 调一次 proStep；遇到抉择就停下等 proChoose。
  * 年内不写档；一年结束（yearDone）或生涯结束才写。刷新页面 = 这一年重打。
  */
-import type { Form, LogLine, MetaSave, ProChoice, ProOffer, ProState, StageResult, Team } from '../types'
+import type { Form, LogLine, MetaSave, ProChoice, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
-  PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE, PRO_START_AGE,
-  PRO_UNLOCK_SEASONS, SALARY, STAGE_PRIZE, TEAMS,
+  FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
+  PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE,
+  SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
 import { clamp, irand, rand } from './rank'
 import { ACH_MAP } from '../data/achievements'
@@ -17,16 +17,12 @@ import { buildProEnding, type ProEndReason } from '../data/endings'
 
 export function freshPro(): ProState {
   return {
-    unlocked: false, runs: 0, active: false, age: PRO_START_AGE, year: 0, teamId: null, salary: 0,
+    runs: 0, active: false, age: 17, year: 0, teamId: null, salary: 0,
     form: 'ok', skill: 55, fame: 0, benchYears: 0, idleYears: 0, yearScore: 0, history: [],
-    titles: { regional: 0, intl: 0, world: 0, worldCup: 0 }, fixes: 0, suspended: 0, growth: 0, income: 0,
+    titles: { regional: 0, intl: 0, world: 0, worldCup: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
     clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [], choice: null,
     yearDone: false, stageAt: 0, endings: {},
   }
-}
-
-export function proUnlocked(meta: MetaSave): boolean {
-  return meta.pro.unlocked || meta.reachedGM || meta.seasonsPlayed >= PRO_UNLOCK_SEASONS
 }
 
 export function teamOf(id: string | null | undefined): Team | null {
@@ -60,16 +56,14 @@ function rollForm(growth: number, age: number): Form {
 
 /* ———————————— 生涯开始 / 结束 ———————————— */
 
-export function canStartCareer(meta: MetaSave): { ok: boolean; why: string } {
-  if (meta.pro.lifetimeBan) return { ok: false, why: '终身禁赛。本存档的职业模式到此为止，删档重来才能再打。' }
-  if (!proUnlocked(meta)) return { ok: false, why: `天梯里触及宗师，或打满 ${PRO_UNLOCK_SEASONS} 个赛季后解锁。` }
-  return { ok: true, why: '' }
-}
-
-export function startCareer(meta: MetaSave) {
+/** 试训通过 → 开始生涯。年龄与天赋从天梯人生带入 */
+export function startCareer(meta: MetaSave, age: number, talent: TalentTier) {
   const p = meta.pro
-  const keep = { unlocked: true, runs: p.runs + 1, growth: p.growth, lifetimeBan: p.lifetimeBan, endings: p.endings }
+  const keep = { runs: p.runs + 1, growth: p.growth, lifetimeBan: p.lifetimeBan, endings: p.endings }
   Object.assign(p, freshPro(), keep)
+  p.age = age
+  p.talentBonus = TALENT_PRO_BONUS[talent]
+  p.fame = meta.fans
   p.active = true
   for (const k of Object.keys(teamMods)) delete teamMods[k]
   deadTeams.clear()
@@ -281,7 +275,7 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
   const p = meta.pro
   p.yearScore = 0
   // 年初：摇状态
-  p.form = rollForm(p.growth, p.age)
+  p.form = rollForm(p.growth + p.talentBonus, p.age)
   p.skill = irand(FORM_INFO[p.form].min, FORM_INFO[p.form].max)
   L(meta, 'talent', `【第 ${p.year + 1} 年 · ${p.age} 岁】本年状态【${FORM_INFO[p.form].name}】`)
   H(meta, { cls: 'talent', text: `状态【${FORM_INFO[p.form].name}】` })
@@ -565,6 +559,15 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     const il = L(meta, ip <= 2 ? 'ending' : 'career', `${name} 最终名次 ${ip}${ipz ? `，奖金 +${fm(ipz)}` : ''}。`)
     H(meta, il)
     yield 'step'
+    // FMVP：世界总决赛冠军且状态在线以上才有资格摇
+    if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0)) {
+      p.titles.fmvp++
+      addFame(meta, 150000)
+      const fl = L(meta, 'ending', '【FMVP】颁奖台的灯打在你一个人身上。')
+      H(meta, fl)
+      ach(meta, 'pro_fmvp')
+      yield 'step'
+    }
   }
 
   meta.cash += res.prize

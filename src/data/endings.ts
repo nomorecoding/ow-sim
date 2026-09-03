@@ -1,7 +1,9 @@
-import type { GameState, MajorTier, MetaSave, SeasonEnding } from '../types'
-import { MAJOR_NAME, TEAMS, nextMajor, rankLabel } from './constants'
+import type { LifeState, MajorTier, MetaSave, SeasonEnding } from '../types'
+import { MAJOR_NAME, TEAMS, isAtMajorGate, nextMajor, rankLabel } from './constants'
+import { scoreToRank } from '../sim/rank'
 
-/** 白金→翡翠 经典判词；其它大段门用同一结构换词 */
+/* ———————————— 云泥之隔 ———————————— */
+
 const PLAT_EMERALD_VERSE = [
   '白金是白金，翡翠是翡翠，是云泥之别，是天壤之别，是判若云泥，是霄壤之隔，是天差地别，是迥然不同，是泾渭分明，是高下立判，是鸿泥之隔，是天渊之别，是人鬼殊途，是仙凡有别，是生殖隔离。',
   '差 1 分都不一样，差 1 分你也是白金，说什么接近翡翠，终归只是白金而已，颜色都不一样。',
@@ -20,7 +22,7 @@ function genericVerse(fromMajor: string, toMajor: string): string[] {
   ]
 }
 
-export function buildCloudMudEnding(major: MajorTier): SeasonEnding | null {
+export function buildCloudMudEnding(major: MajorTier, age: number): SeasonEnding | null {
   const nxt = nextMajor(major)
   if (!nxt) return null
   const from = MAJOR_NAME[major]
@@ -29,12 +31,73 @@ export function buildCloudMudEnding(major: MajorTier): SeasonEnding | null {
   return {
     id: `cloudmud_${major}`,
     title: `云泥之隔 · ${from}1·99`,
-    verse,
+    verse: [...verse, `${age} 岁退坑。最后一把停在 ${from}1 · 99 分。`],
     rankLabel: `${from}1 · 99分（差 1 分到${nxt === 'top' ? to : to + '5'}）`,
   }
 }
 
-/* ———————————— 职业模式结局 ———————————— */
+/* ———————————— 天梯人生结局 ———————————— */
+
+export type LifeEndReason = 'quit' | 'age' | 'banned' | 'landed'
+
+const PEAK_TITLE: Record<MajorTier, [string, string]> = {
+  bronze: ['青铜养老', '你在青铜打了一辈子。队友换了几百个，没一个记得你。'],
+  silver: ['白银人', '白银是大多数人的家。你也是。'],
+  gold: ['黄金守门员', '黄金 1 到白金 5 之间，你来回走了很多年。'],
+  plat: ['白金人', '白金。你这辈子的段位。'],
+  emerald: ['翡翠', '翡翠是你的顶。往上看过一眼，没上去。'],
+  diamond: ['钻石守门员', '钻石墙。多少人在这儿和你一样，抬头看大师。'],
+  master: ['大师', '大师。在网吧里够吹一辈子的段位。'],
+  gm: ['路人王', '宗师。没进职业，但排到你的人都知道你是谁。'],
+  champ: ['英杰路人', '英杰。离顶尖 500 差一个榜单，离职业差一条私信。'],
+  top: ['顶尖 500 · 路人王', '榜单上有你的名字。没人来签你——或者你没去。'],
+}
+
+export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEnding {
+  const peak = scoreToRank(g.peakScore)
+  const real = scoreToRank(g.peakMmr)
+  const label = `${g.age} 岁 · 峰值 ${rankLabel(peak)} · 真实峰值 ${rankLabel(real)}`
+  const stat = `${g.season} 季，${g.gamesTotal.toLocaleString()} 把。`
+
+  if (reason === 'banned') {
+    const cheat = g.dirty.cheatSeasons > 0
+    return {
+      id: 'banned', title: cheat ? '封号 · 官方验证通过' : '封号 · 账号共享', rankLabel: label,
+      verse: [
+        cheat ? '登录时跳出一行字：该账号因使用第三方程序被永久封停。' : '那个代练带过的号被查了，连带你的一起。',
+        '段位图标还在截图里。号没了。',
+        `${stat}最后一道墙没自己过去。`,
+        '战队不会再看这个 ID。',
+      ],
+    }
+  }
+  if (reason === 'landed') {
+    return {
+      id: 'landed', title: '上岸', rankLabel: label,
+      verse: ['接单收入过了十万。你把最后一个老板拉黑，付了首付。', '从炸鱼单到高价单，每一单都在匹配池里留下了味道。', '你以后再排到代练，也没资格骂了。'],
+    }
+  }
+  // 云泥：退坑时停在 X1·99
+  if (isAtMajorGate(g.rank) && g.rank.rp === 99) {
+    const cm = buildCloudMudEnding(g.rank.major, g.age)
+    if (cm) return cm
+  }
+  const [title, line] = PEAK_TITLE[peak.major]
+  const gapLine = g.peakMmr - g.peakScore > 300
+    ? `系统一直欠你分：真实峰值 ${rankLabel(real)}，段位从没追上过。`
+    : g.peakScore - g.peakMmr > 300
+      ? `段位比实力高了一截。${g.usedMarket ? '你知道为什么。' : '陪玩那次。'}`
+      : `段位和实力基本一致。`
+  const how = reason === 'age'
+    ? `${g.age} 岁。游戏还在硬盘里，你只是不再点开。`
+    : g.stage === 'worker' ? '下班太累了。最后几季都是周末打两把。' : g.stage === 'fulltime' ? '全职打了几年，房租把热情烧完了。' : '不想打了。就是不想打了。'
+  return {
+    id: `quit_${peak.major}`, title, rankLabel: label,
+    verse: [line, gapLine, stat + how, g.stuckTotal >= 5 ? `一辈子卡墙 ${g.stuckTotal} 季。` : g.goldGuns ? `换了 ${g.goldGuns} 把金枪。` : `人设【${g.persona.name}】——${g.persona.tagline}。`],
+  }
+}
+
+/* ———————————— 职业结局 ———————————— */
 
 export type ProEndReason = 'retire' | 'quit' | 'lifetime_ban' | 'fix_ruin' | 'hell_return'
 
@@ -54,7 +117,7 @@ export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEndi
   const t = p.titles
   const team = TEAMS.find((x) => x.id === p.teamId)?.name ?? ''
   const label = `${p.age} 岁 · ${p.yearsPlayed} 年${team ? ` · ${team}` : ''}`
-  const record = `地区冠军 ${t.regional} · 国际赛 ${t.intl} · 世界冠军 ${t.world}${t.worldCup ? ` · 国家队 ${t.worldCup}` : ''}`
+  const record = `地区冠军 ${t.regional} · 国际赛 ${t.intl} · 世界冠军 ${t.world}${t.fmvp ? ` · FMVP ${t.fmvp}` : ''}${t.worldCup ? ` · 国家队 ${t.worldCup}` : ''}`
 
   if (reason === 'lifetime_ban') {
     return {
@@ -71,7 +134,7 @@ export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEndi
   if (reason === 'hell_return') {
     return {
       id: 'hell_return', title: '地狱归来', rankLabel: label,
-      verse: [`最低的时候，账上是 ${meta.cashLow.toLocaleString()}。房租、利息、家里的电话。`, '你没接单，没请人，没开挂，没收那笔钱。就是打。', `本生涯职业收入 ${p.income.toLocaleString()}。${record}。`, '从负债到领奖台，中间没有捷径。王者风范，地狱归来。'],
+      verse: [`最低的时候，账上是 ${meta.cashLow.toLocaleString()}。房租、催收、家里的电话。`, '你没接单，没请人，没开挂，没收那笔钱。就是打。', `本生涯职业收入 ${p.income.toLocaleString()}。${record}。`, '从负债到领奖台，中间没有捷径。王者风范，地狱归来。'],
     }
   }
   if (reason === 'quit') {
@@ -81,7 +144,7 @@ export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEndi
     }
   }
   // retire：按履历分层
-  if (t.world >= 1 && t.regional >= 3) {
+  if (t.fmvp >= 1 || t.world >= 2) {
     return {
       id: 'legend', title: '一代传奇', rankLabel: label,
       verse: [`${record}。`, '退役赛最后一图，全场起立。对面的选手是看你比赛长大的。', '你的 ID 进了名人堂，你的出装教程还在被人搬运。', afterlife(meta)],
@@ -114,64 +177,5 @@ export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEndi
   return {
     id: 'journeyman', title: '打工人', rankLabel: label,
     verse: [`${p.yearsPlayed} 年。${record}。`, '你换过队，坐过板凳，也打过季后赛。', '不算成功，也不算失败。这个赛区大多数人都是这样退役的。', afterlife(meta)],
-  }
-}
-
-export function buildTopEnding(g: GameState): SeasonEnding {
-  return {
-    id: 'top500',
-    title: '顶尖 500',
-    rankLabel: rankLabel(g.rank),
-    verse: [
-      '榜单刷新的那一秒，你的 ID 出现在了一个只有五百个名字的地方。',
-      '你截了图，没发。',
-      '天梯登顶，和排到你的每一个人，都是云泥之别。',
-    ],
-  }
-}
-
-export function buildBannedEnding(g: GameState): SeasonEnding {
-  const cheat = g.identity === 'cheat'
-  return {
-    id: 'banned',
-    title: cheat ? '封号 · 官方验证通过' : '封号 · 代练账号',
-    rankLabel: rankLabel(g.rank),
-    verse: cheat
-      ? [
-          '登录时跳出一行字：该账号因使用第三方程序被永久封停。',
-          '你打过的每一把，被举报过的每一次，都算数。',
-          `本赛季最高触及 ${rankLabel(g.rank)}。段位归零，换号重来，时长照旧。`,
-        ]
-      : [
-          '那个老板的号被封了，连带你上过的所有账号一起查。',
-          '代练收入到账了，段位没了。',
-          '换号重来。战队永远不会再看你的号。',
-        ],
-  }
-}
-
-export function buildLandedEnding(g: GameState): SeasonEnding {
-  return {
-    id: 'landed',
-    title: '上岸',
-    rankLabel: rankLabel(g.rank),
-    verse: [
-      '代练累计收入过了六千。你把最后一个老板拉黑，付了首付。',
-      '从抖音炸鱼到大师墙高价单，每一单都在匹配池里留下了味道。',
-      '你以后再排到代练，也没资格骂了。',
-    ],
-  }
-}
-
-export function buildBronzeEnding(g: GameState): SeasonEnding {
-  return {
-    id: 'bronze',
-    title: '地心探索',
-    rankLabel: rankLabel(g.rank),
-    verse: [
-      '青铜五。你以为下面没有了。',
-      '系统告诉你：还有 0 分。',
-      `人设【${g.persona.name}】——${g.persona.tagline}。`,
-    ],
   }
 }
