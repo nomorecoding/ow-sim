@@ -11,7 +11,7 @@ import {
 } from '../data/constants'
 import { clamp, irand, rand } from './rank'
 import { ACH_MAP } from '../data/achievements'
-import { buildProEnding, type ProEndReason } from '../data/endings'
+import { afterlife, buildProEnding, type ProEndReason } from '../data/endings'
 import { addExp } from '../data/talent'
 
 /* ———————————— 档 ———————————— */
@@ -104,6 +104,17 @@ export function proStep(): Tick | 'done' {
   return r.value
 }
 
+/** 玩家主动退役：按目前履历结算 */
+export function retireNow(meta: MetaSave) {
+  const p = meta.pro
+  if (!p.active) return
+  gen = null
+  p.log = []
+  p.highlights = []
+  L(meta, 'sys', '你发了条微博：「到这儿吧。」')
+  endCareer(meta, 'retire')
+}
+
 function* careerGen(meta: MetaSave): Generator<Tick, void, void> {
   const p = meta.pro
   while (p.active) {
@@ -119,7 +130,7 @@ function* careerGen(meta: MetaSave): Generator<Tick, void, void> {
 
 const MAPS = ['里阿尔托', '努巴尼', '好莱坞', '国王大道', '漓江塔', '伊利奥斯', '尼泊尔', '直布罗陀', '66号公路', '巴黎', '新皇后街', '科洛塞', '伊斯佩兰萨', '多拉多', '花村', '阿努比斯神殿']
 const WIN_MOMENTS = ['最后一波抢下决胜点', '你一个大招清了三个', '加时守住了', '第三图打到 99:99 拿下', '对面换阵你们跟上了', '教练暂停之后连扳两图']
-const LOSE_MOMENTS = ['推车差 0.3 米', '被对面辅助大招翻盘', '教练喊了暂停也没救回来', '对面 C 位手感爆炸', '你的英雄被 ban 了，换手打得别扭', '对面换阵你们没跟上', '第三图打到 99:99 丢了']
+const LOSE_MOMENTS = ['推车差 0.3 米', '被对面辅助大招翻盘', '教练喊了暂停也没救回来', '对面 DPS 手感爆炸', '你的英雄被 ban 了，换手打得别扭', '对面换阵你们没跟上', '第三图打到 99:99 丢了']
 const OPP = ['韩国队', '北美队', '欧洲队', '日本队', '沙特队']
 const map = () => MAPS[irand(0, MAPS.length - 1)]
 const moment = (win: boolean) => (win ? WIN_MOMENTS : LOSE_MOMENTS)[irand(0, (win ? WIN_MOMENTS : LOSE_MOMENTS).length - 1)]
@@ -155,6 +166,10 @@ export function exposureP(meta: MetaSave): number {
 
 function endCareer(meta: MetaSave, reason: ProEndReason) {
   const p = meta.pro
+  // 退役开播能不能爆，看底子也看运气：人气够高的老粉多，首播一晚就能冲上百万
+  if (!p.lifetimeBan && reason !== 'fix_ruin' && p.fame >= 250000 && rand() < 0.35) {
+    addFame(meta, Math.max(1000000, p.fame * 3) - p.fame)
+  }
   p.ending = buildProEnding(meta, reason)
   p.active = false
   p.endings[p.ending.id] = (p.endings[p.ending.id] ?? 0) + 1
@@ -162,6 +177,14 @@ function endCareer(meta: MetaSave, reason: ProEndReason) {
   meta.lastEndingId = p.ending.id
   H(meta, { cls: 'ending', text: `【${p.ending.title}】` })
   ach(meta, `pro_end_${p.ending.id}`)
+  // 退役去向 / 生涯形状
+  const kind = afterlife(meta).kind
+  if (kind === 'star') ach(meta, 'pro_kskbl')
+  if (kind === 'boost') ach(meta, 'pro_zdjd')
+  const clubs = new Set(p.history.map((r) => r.team)).size
+  if (p.yearsPlayed >= 5 && clubs === 1) ach(meta, 'pro_one_club')
+  if (clubs >= 4) ach(meta, 'pro_nomad')
+  if (p.yearsPlayed >= 6 && p.benchYears === 0 && !p.history.some((r) => r.bench)) ach(meta, 'pro_ironman')
   // 职业成就 → 经验（线性）
   const t = p.titles
   const exp = p.yearsPlayed * EXP_PRO.year + t.regional * EXP_PRO.regional + t.intl * EXP_PRO.intl + t.world * EXP_PRO.world + t.fmvp * EXP_PRO.fmvp
@@ -613,7 +636,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
   if (bench) res.prize = Math.round(res.prize * 0.4)
   const fameGain = (res.place === 1 ? 15000 : res.place === 2 ? 8000 : res.place <= 4 && res.place > 0 ? 3000 : 500) * (bench ? 0.3 : 1)
   addFame(meta, fameGain)
-  if (res.place === 1) { p.titles.regional++; ach(meta, 'pro_regional_champ') }
+  if (res.place === 1) { p.titles.regional++; ach(meta, 'pro_regional_champ'); if (bench) ach(meta, 'pro_bench_champ') }
   const line = L(meta, res.place === 1 ? 'ending' : 'career', `Stage ${stage} 地区名次 ${res.place || '预选出局'}${res.prize ? `，奖金分成 +${fm(res.prize)}` : ''}。${tag}`)
   H(meta, line)
   yield 'step'
@@ -657,6 +680,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     res.prize += ipz
     addFame(meta, (ip === 1 ? 100000 : ip <= 4 ? 30000 : 10000) * (bench ? 0.3 : 1))
     ach(meta, 'pro_intl')
+    if (stage === 3 && ip <= 4) ach(meta, 'pro_world_top4')
     if (ip <= 2) p.titles.intl++
     if (ip === 1) {
       p.titles.world++
@@ -712,7 +736,7 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
   // 年龄：强制收官 / 身体报警
   if (p.age >= PRO_FORCE_RETIRE_AGE) { L(meta, 'sys', `${p.age} 岁。没有转会窗了。`); yield 'step'; endCareer(meta, 'retire'); return }
   if (proAge(p) >= PRO_DECLINE_AGE && rand() < 0.12 * (proAge(p) - PRO_DECLINE_AGE + 1)) {
-    L(meta, 'warn', `${p.age} 岁，手速和反应都在告诉你：到时候了。`)
+    L(meta, 'warn', `${p.age} 岁。反应慢了半拍，训练赛里年轻人开始打你的位置。`)
     yield 'step'
     endCareer(meta, 'retire')
     return

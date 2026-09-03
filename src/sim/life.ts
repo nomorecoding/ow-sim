@@ -181,7 +181,7 @@ export function createLife(meta: MetaSave): LifeState {
     over: false,
   }
   g.logs.push({ cls: 'sys', text: `${START_AGE} 岁，第一次打排位。人设【${persona.name}】——${persona.tagline}。${rich ? '家里有钱，网费不是问题。' : ''}` })
-  g.logs.push({ cls: 'talent', text: `天赋【${ti.name}】。${ti.range}——但没人告诉你。${rerolled ? '（传承：重摇取高）' : ''}` })
+  g.logs.push({ cls: 'talent', text: `天赋【${ti.name}】。${ti.range}。没人告诉你，你得自己打出来。${rerolled ? '（成就奖励：摇了两次，取高）' : ''}` })
   g.highlights.push({ cls: 'talent', text: `天赋【${ti.name}】` })
   if (talent.tier === 'something') unlock(g, 'talent_something')
   if (talent.tier === 'genius') unlock(g, 'talent_genius')
@@ -382,7 +382,7 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
     } else {
       g.stuckSeasons++
       g.stuckTotal++
-      wallLine = { cls: 'warn', text: needGames ? `顶尖 500 是榜单，这季只打了 ${games} 把，胜场不够上榜。` : `卡在${MAJOR_NAME[wall.into]}门口。${g.stuckSeasons > 1 ? `第 ${g.stuckSeasons} 季了。` : '差一口气。'}` }
+      wallLine = { cls: 'warn', text: needGames ? `500 强是榜单，这季只打了 ${games} 把，胜场不够上榜。` : `卡在${MAJOR_NAME[wall.into]}门口。${g.stuckSeasons > 1 ? `第 ${g.stuckSeasons} 季了。` : '差一口气。'}` }
     }
   } else {
     if (delta < 0 && g.momentum > 0) g.momentum *= 0.5
@@ -548,10 +548,10 @@ function* deadline(g: LifeState, into: MajorTier): Generator<Tick, void, void> {
     const bonus = Math.round((WALL_PASSION[into] ?? 50) * 0.5)
     passionAdd(g, bonus)
     L(g, 'win', `${MAJOR_NAME[into]}到了。不是你打的，但图标是真的。热情 +${bonus}。`)
-    L(g, 'sys', cheat ? '举报在堆。反作弊不是不查，是攒着查。' : '实力没变。接下来系统会一季一季把分修正回去——除非你自己追上来。')
+    L(g, 'sys', cheat ? '举报在堆。反作弊不是不查，是攒着查。' : '实力没变。接下来系统会一季一季把分修正回去，除非你自己追上来。')
     unlock(g, 'fake_wall')
   } else {
-    L(g, 'lose', '没过。钱花了，段位还在原地。')
+    L(g, 'lose', cheat ? '没过。挂开了分也没上去，举报倒攒了一堆。' : '没过。钱花了，段位还在原地。')
   }
   yield 'step'
 }

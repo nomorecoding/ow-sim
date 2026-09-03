@@ -14,7 +14,7 @@ export const MAJOR_NAME: Record<MajorTier, string> = {
   master: '大师',
   gm: '宗师',
   champ: '英杰',
-  top: '顶尖500',
+  top: '500 强',
 }
 
 /** 带 5 小段的大段（1 档满分 = 差 1 分升下一大段） */
@@ -83,7 +83,7 @@ export const TALENT_INFO: Record<TalentTier, {
   normal:    { name: '普通',     base: 41,  cls: 'tal-1', slope: 100, sigma: 70,  breakBonus: 0,     start: [200, 1000],  range: '白金–翡翠是常态' },
   something: { name: '有点东西', base: 18,  cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
   genius:    { name: '天才',     base: 7,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
-  monster:   { name: '怪物',     base: 2,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '顶尖 500 的料' },
+  monster:   { name: '怪物',     base: 2,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '500 强的料' },
 }
 
 /* ———————————— 经验 / 等级：只改天才、怪物的概率 ———————————— */
@@ -270,9 +270,14 @@ export const PERSONAS: Persona[] = [
   { id: 'coach', name: '公屏教练', tagline: '打得一般，指挥一流', metrics: { brainless: 25, rot: 15, rage: 60, delusion: 50, trash: 25 } },
 ]
 
+/** 500 强榜单名次：0 分 = 第 500 名，100 分 = 第 1 名 */
+export function topPlace(rp: number): number {
+  return Math.max(1, 500 - Math.round(rp * 4.99))
+}
+
 export function rankLabel(r: RankState): string {
   const name = MAJOR_NAME[r.major]
-  if (r.major === 'top') return `${name} · ${r.rp}分`
+  if (r.major === 'top') return `${name} · 第 ${topPlace(r.rp)} 名`
   return `${name}${r.div} · ${r.rp}分`
 }
 

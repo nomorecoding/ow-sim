@@ -2,13 +2,13 @@ import './style.css'
 import type { HiddenTalent, LifeState, LogLine, RankState, TalentTier } from './types'
 import {
   ACH_PERKS, DEFAULT_SPEED, FORM_INFO, FORM_ORDER, HIDDEN_INFO, INTL_NAME, MAJOR_NAME, MIN_SPEED, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
-  STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER,
+  STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { levelNeed, talentProbs } from './data/talent'
 import { achCount, beginLife, commitLife, createLife, currentShift, freshMeta, lifeStep, loadMeta, writeMeta } from './sim/life'
 import { clamp, scoreToRank } from './sim/rank'
-import { beginCareerRun, careerInProgress, exposureP, formProbs, proAge, proStep, teamOf, teamRating } from './sim/pro'
+import { beginCareerRun, careerInProgress, exposureP, formProbs, proAge, proStep, retireNow, teamOf, teamRating } from './sim/pro'
 
 const fmt = (n: number) => n.toLocaleString()
 const DEBUG = new URLSearchParams(location.search).has('debug')
@@ -63,12 +63,13 @@ function flushLogs() {
 /** 段位排版：中文大段用衬线，数字用 Didot */
 function rankHtml(r: RankState) {
   const cls = RANK_COLOR_CLASS[r.major]
-  if (r.major === 'top') return `<span class="${cls}"><span class="cn">${MAJOR_NAME[r.major]}</span> <span class="num">${r.rp}</span></span>`
+  if (r.major === 'top') return `<span class="${cls}"><span class="cn">${MAJOR_NAME[r.major]}</span> <span class="num" style="font-size:0.6em;opacity:0.7">第</span><span class="num">${topPlace(r.rp)}</span><span class="num" style="font-size:0.6em;opacity:0.7">名</span></span>`
   return `<span class="${cls}"><span class="cn">${MAJOR_NAME[r.major]}</span><span class="num">${r.div}</span> <span class="num" style="font-size:0.6em;opacity:0.7">${r.rp}</span></span>`
 }
 
 function rankInline(r: RankState) {
-  return `<span class="${RANK_COLOR_CLASS[r.major]}">${MAJOR_NAME[r.major]}${r.major === 'top' ? '' : r.div} · ${r.rp}</span>`
+  if (r.major === 'top') return `<span class="${RANK_COLOR_CLASS[r.major]}">${MAJOR_NAME[r.major]} · 第 ${topPlace(r.rp)} 名</span>`
+  return `<span class="${RANK_COLOR_CLASS[r.major]}">${MAJOR_NAME[r.major]}${r.div} · ${r.rp}</span>`
 }
 
 function talentBadge(t: TalentTier, hidden: HiddenTalent | null = null) {
@@ -505,6 +506,7 @@ function renderPro() {
         <p class="tip" style="color:var(--bone)">${titles}${p.suspended ? ` · <span class="ban">禁赛剩 ${p.suspended} 个 Stage</span>` : ''}</p>
         <p class="tip" style="margin-top:6px">背调档案：${dirtyText}</p>
         <button class="btn btn-primary" id="btn-year" style="margin-top:12px">${p.year === 0 ? '开始职业生涯 · 一路滚到退役' : `从第 ${p.year + 1} 年继续 · 一路滚到退役`}</button>
+        ${p.year > 0 ? '<button class="btn btn-danger" id="btn-retire">现在退役</button>' : ''}
       </div>
       ${formBar(proAge(p))}
       <div class="section"><div class="label">履历</div>${historyLedger()}</div>`
@@ -513,6 +515,11 @@ function renderPro() {
   app.innerHTML = `<div class="reveal">${top.html}${body}</div>`
   top.bind()
   $('btn-year')?.addEventListener('click', startProRun)
+  $('btn-retire')?.addEventListener('click', () => {
+    if (!confirm('现在退役：按目前的履历结算，不能反悔。确定？')) return
+    retireNow(meta)
+    renderProSettle()
+  })
   mountDebug()
 }
 
@@ -591,7 +598,10 @@ function tickPro() {
   // 滚过一年就落盘一次：刷新只丢当前这一年
   if (meta.pro.year !== proSavedYear) { proSavedYear = meta.pro.year; writeMeta(meta) }
   if (r === 'done') { stopProTimer(); proTimer = window.setTimeout(renderProSettle, 1200); return }
-  if (!meta.manual) proTimer = window.setTimeout(tickPro, fastForward ? intervalMs() : intervalMs() * 3)
+  // 比分行快一点，事件 / 公告慢一点，整段生涯两三分钟滚完
+  const last = meta.pro.log[meta.pro.log.length - 1]
+  const mult = fastForward ? 1 : last && (last.cls === 'win' || last.cls === 'lose') ? 1.4 : 2.6
+  if (!meta.manual) proTimer = window.setTimeout(tickPro, intervalMs() * mult)
 }
 
 /** 生涯结算：一辈子的职业路走完了 */
@@ -653,7 +663,7 @@ function renderAbout() {
     </div>
     <div class="section">
       <div class="label">天赋与墙</div>
-      <p class="tip" style="color:var(--bone)">天赋开局摇一档，一辈子不变，决定隐藏实力涨多快。极小概率会在天赋之外再摇到一个隐藏天赋——摇到了你会知道，它有自己的结局。每个大段之间有一道墙：实力顶到墙就要过检定，过不去就卡在 X1·9x——差一分的那种。卡久了会自己想办法：换英雄池、找人复盘，都是事件。</p>
+      <p class="tip" style="color:var(--bone)">天赋开局摇一档，一辈子不变，决定隐藏实力涨多快。极小概率会在天赋之外再摇到一个隐藏天赋，摇到了你会知道，它有自己的结局。每个大段之间有一道墙：实力顶到墙就要过检定，过不去就卡在 X1·9x，差一分的那种。卡久了会自己想办法：换英雄池、找人复盘，都是事件。</p>
     </div>
     <div class="section">
       <div class="label">系统控分</div>
@@ -665,11 +675,11 @@ function renderAbout() {
     </div>
     <div class="section">
       <div class="label">黑市</div>
-      <p class="tip" style="color:var(--bone)">热情快见底又卡在墙上时，会有人私信你。你会怎么选，也是摇的——环境越脏、手头越有钱，越容易走歪；整个游戏没有任何要你点的抉择。代练能过墙，但留下记录：天梯里可能被封 30 天，职业里被翻出来就是禁赛解约，还连累下几辈子。开挂过墙最容易，但几季之内必被永封，从那一刻起这辈子的成就不再计入。</p>
+      <p class="tip" style="color:var(--bone)">热情快见底又卡在墙上时，会有人私信你。你会怎么选也是摇的：环境越脏、手头越有钱，越容易走歪。整个游戏没有任何要你点的抉择。代练能过墙，但留下记录：天梯里可能被封 30 天，职业里被翻出来就是禁赛解约，还连累下几辈子。开挂过墙最容易，但几季之内必被永封，从那一刻起这辈子的成就不再计入。</p>
     </div>
     <div class="section">
       <div class="label">经验与等级</div>
-      <p class="tip" style="color:var(--bone)">每辈子结束按最高段位给经验，进职业、拿冠军再加。升级所需经验一级比一级多一点。每一级、每一个成就，都让下辈子摇到天才 / 怪物的概率高一点——不多，但一直在长。成就总数攒到 10 / 20 / 30 / 40 / 50 个，各解锁一个下辈子永久带着的 buff（成就页有明细）。</p>
+      <p class="tip" style="color:var(--bone)">每辈子结束按最高段位给经验，进职业、拿冠军再加。升级所需经验一级比一级多一点。每一级、每一个成就，都让下辈子摇到天才 / 怪物的概率高 0.1%。成就总数攒到 10 / 20 / 30 / 40 / 50 个，各解锁一个下辈子永久带着的 buff（成就页有明细）。</p>
     </div>
     <div class="section">
       <div class="label">会发生什么</div>

@@ -75,7 +75,7 @@ export const COMMON_EVENTS: LifeEvent[] = [
   { id: 'streak_lose', weight: 3, run: (g) => { passion(g, -45); return `十连跪。你把鼠标扣在桌上，垫子裂了。${pd(-45)}。` } },
   { id: 'afk_mate', weight: 3, run: (g) => { passion(g, -20); return `决胜图队友挂机。你一个人守了两分钟。${pd(-20)}。` } },
   { id: 'new_hero', weight: 2, run: (g) => { g.mmr += 25; passion(g, 30); return `新英雄出了，你第一天就把它练成本命。${pd(30)}。` } },
-  { id: 'old_clip', weight: 2, when: (g) => g.season >= 8, run: (g) => { passion(g, 25); return `翻到三年前自己的录像。那时候打得真烂——也真开心。${pd(25)}。` } },
+  { id: 'old_clip', weight: 2, when: (g) => g.season >= 8, run: (g) => { passion(g, 25); return `翻到三年前自己的录像。那时候打得真烂，也真开心。${pd(25)}。` } },
   { id: 'friend_quit', weight: 2, when: (g) => g.season >= 6, run: (g) => { passion(g, -50); return `一起打了几年的朋友退坑了，说「有空再约」。你们没再约过。${pd(-50)}。` } },
   { id: 'server_down', weight: 2, run: (g) => { passion(g, -10); return `国服维护。你打了一晚上亚服，200 ping。${pd(-10)}。` } },
   { id: 'anniversary', weight: 2, run: (g) => { passion(g, 30); return `周年庆。登录送了个皮肤，你居然有点感动。${pd(30)}。` } },
@@ -98,20 +98,20 @@ export const COMMON_EVENTS: LifeEvent[] = [
 
 /* ———————————— 脏池：污染越高越常见 ———————————— */
 export const DIRTY_EVENTS: LifeEvent[] = [
-  { id: 'fish', weight: 6, run: (g) => { g.pollution += 3; return '对局里有人代练炸鱼。匹配味道更浊。' } },
+  { id: 'fish', weight: 6, run: (g) => { g.pollution += 3; return '这局对面有个代练炸鱼，你们被打成 0-3。' } },
   { id: 'pwdl_ad', weight: 4, when: (g) => g.stuckSeasons >= 1, run: () => '有人私信你：「哥，卡段了吧？钻石代练 12 一把。」你没回。' },
   { id: 'escort_taste', weight: 2, when: (g) => g.fakeBoost <= 0 && sr(g) >= S.plat, hl: true, run: (g) => {
     g.fakeBoost += 250
     unlock(g, 'escort_taste')
-    return '朋友请你体验了一次 4 陪 1。五排四个宗师带你，这季段位飞了——实力一点没动。'
+    return '朋友请你体验了一次 4 陪 1。五排四个宗师带你，这季段位飞了，实力一点没动。'
   } },
   { id: 'met_388', weight: 2, when: (g) => sr(g) >= S.diamond, hl: true, run: (g) => {
     g.fakeBoost -= 150
     unlock(g, 'met_388')
     return '对面五排带老板，那个 388 一小时的 OWL 级陪玩一枪一个。这季分掉了一截。'
   } },
-  { id: 'hacker', weight: 3, run: () => '对面一命十三，疑似外挂。你想骂——先掂量红框。' },
-  { id: 'false_report', weight: 2, when: (g) => g.pollution > 20, run: () => '脏池子里有人恶意举报你。' },
+  { id: 'hacker', weight: 3, run: () => '对面一命十三，疑似外挂。你打了两行字，删了，怕红框。' },
+  { id: 'false_report', weight: 2, when: (g) => g.pollution > 20, run: () => '一局没说话，赛后收到「举报已受理」。有人在乱举报。' },
   { id: 'sold_alt', weight: 2, when: (g) => g.stage === 'fulltime' && g.cash < 0, run: (g) => { g.cash += 1500; g.pollution += 5; return '把一个小号卖了。买家问「能上分吗」，你说能。现金 +1500。' } },
   { id: 'streamer_boost', weight: 2, when: (g) => sr(g) >= S.diamond, run: () => '排到一个开播的主播，他带着两个代练。你打完看了眼弹幕，全在夸他。' },
 ]
@@ -134,7 +134,7 @@ export const LIFE_EVENTS: LifeEvent[] = [
   { id: 'parttime', weight: 3, when: (g) => g.stage === 'student', run: (g) => { const c = irand(200, 500); g.cash += c; return `兼职到账 +${c}。` } },
   { id: 'bonus', weight: 3, when: (g) => g.stage === 'worker', run: (g) => { const c = irand(800, 1500); g.cash += c; return `项目奖金 +${c}。` } },
   { id: 'overtime', weight: 3, when: (g) => g.stage === 'worker', run: (g) => { passion(g, -40); g.cash += 3000; return `接了个加班项目。现金 +3000，${pd(-40)}。` } },
-  { id: 'free', weight: 5, when: (g) => g.stage !== 'free' && g.cash >= FREE_CASH, hl: true, run: (g) => { g.stage = 'free'; unlock(g, 'stage_free'); return '存款过三十万，你辞了职——「财富自由」。' } },
+  { id: 'free', weight: 5, when: (g) => g.stage !== 'free' && g.cash >= FREE_CASH, hl: true, run: (g) => { g.stage = 'free'; unlock(g, 'stage_free'); return '存款过三十万，你辞了职。朋友圈只发了两个字：自由。' } },
 ]
 
 /* ———————————— 人设专属彩蛋（每局最多一次） ———————————— */
@@ -144,7 +144,7 @@ export const EGG_EVENTS: LifeEvent[] = [
   { id: 'egg_coach', weight: 2, when: (g) => g.persona.id === 'coach', hl: true, run: (g) => { g.mmr += 30; unlock(g, 'egg_coach'); return '你指挥了一整局，赢了。队友：「你打得真菜，但指挥得真好。」' } },
   { id: 'egg_liu6', weight: 2, when: (g) => g.persona.id === 'liu6', hl: true, run: (g) => { unlock(g, 'egg_liu6'); return '你蹲了六分钟，对面五个人从你面前走了过去。' } },
   { id: 'egg_atm', weight: 2, when: (g) => g.persona.id === 'atm', hl: true, run: (g) => { unlock(g, 'egg_atm'); return '0-13。对面加你好友说谢谢。' } },
-  { id: 'egg_mercy', weight: 2, when: (g) => g.persona.id === 'mercy', hl: true, run: (g) => { unlock(g, 'egg_mercy'); return '大海为你分开——你飞过去，被秒了。' } },
+  { id: 'egg_mercy', weight: 2, when: (g) => g.persona.id === 'mercy', hl: true, run: (g) => { unlock(g, 'egg_mercy'); return '队友在点上喊奶。你飞过去，落地就死了。' } },
   { id: 'egg_wall', weight: 2, when: (g) => g.persona.id === 'wall', hl: true, run: (g) => { g.mmr += 20; unlock(g, 'egg_wall'); return '你杵在点上挨了 40 秒，队友复活回来，点守住了。' } },
   { id: 'egg_rage', weight: 2, when: (g) => g.persona.id === 'rage', hl: true, run: (g) => { addFans(g, 1500); unlock(g, 'egg_rage'); return '你骂人的切片火了。喷子出圈，人气 +1500。' } },
   { id: 'egg_diva', weight: 2, when: (g) => g.persona.id === 'diva', hl: true, run: (g) => { unlock(g, 'egg_diva'); return '你让全队给你让路。全队真让了。你走进去，死了。' } },
