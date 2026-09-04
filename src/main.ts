@@ -1,12 +1,12 @@
 import './style.css'
-import type { HiddenTalent, LifeState, LogLine, RankState, TalentTier, Team } from './types'
+import type { HiddenTalent, LifeState, LogLine, MetaSave, RankState, TalentTier, Team } from './types'
 import {
-  ACH_PERKS, DEFAULT_SPEED, FORM_INFO, HIDDEN_INFO, INTL_NAME, LIFE_TICK_MS, MAJOR_NAME, MAX_SPEED, MIN_SPEED, PRO_TICK_MS, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
-  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TEAM_TIER_CLASS, topPlace,
+  ACH_PERKS, DEFAULT_SPEED, FORM_INFO, HIDDEN_INFO, INTL_NAME, LIFE_TICK_MS, MAJOR_NAME, MAX_SPEED, MIN_SPEED, PRO_TICK_RATIO, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
+  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TALENT_SHIFT_CAP, TALENT_SHIFT_PER, TEAM_TIER_CLASS, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { levelNeed, talentProbs, talentShift } from './data/talent'
-import { achCount, beginLife, commitLife, createLife, currentShift, freshMeta, lifeStep, loadMeta, writeMeta } from './sim/life'
+import { achCount, beginLife, chooseDark, clearAllSaves, commitLife, createLife, currentShift, freshMeta, hardResetMeta, lifeStep, loadMeta, writeMeta } from './sim/life'
 import { clamp, scoreToRank } from './sim/rank'
 import { beginCareerRun, careerInProgress, exposureP, proStep, retireNow, teamOf, teamRating } from './sim/pro'
 
@@ -26,6 +26,12 @@ function teamBadge(t: Team | null) {
 const meta = loadMeta()
 if (typeof meta.speed !== 'number') meta.speed = DEFAULT_SPEED
 if (typeof meta.manual !== 'boolean') meta.manual = false
+
+/** 原地换成新档（保留同一个 meta 引用，方便全站共用） */
+function replaceMeta(next: MetaSave) {
+  for (const k of Object.keys(meta as object)) delete (meta as unknown as Record<string, unknown>)[k]
+  Object.assign(meta, next)
+}
 
 /* ———————————— 外观主题 ———————————— */
 const THEMES = [
@@ -58,11 +64,12 @@ const $ = (id: string) => document.getElementById(id)
 
 /* ———————————— 小工具 ———————————— */
 
-/** 一行滚多久：主玩法一季 0.1s、职业一行 0.15s，乘上设置里的统一倍率 */
+/** 一行滚多久：基准 ×1 = 0.1s；职业再乘系数 */
 function speedScale() { return clamp(meta.speed || DEFAULT_SPEED, MIN_SPEED, MAX_SPEED) }
 function tickMs(kind: 'life' | 'pro') {
   if (fastForward) return 30
-  return Math.round((kind === 'life' ? LIFE_TICK_MS : PRO_TICK_MS) * speedScale())
+  const base = LIFE_TICK_MS * speedScale()
+  return Math.round(kind === 'life' ? base : base * PRO_TICK_RATIO)
 }
 
 function stopTimer() {
@@ -123,40 +130,41 @@ function toast(text: string) {
   window.setTimeout(() => { t.classList.remove('show'); window.setTimeout(() => t.remove(), 400) }, 4200)
 }
 
-/* ———————————— 成就横幅：头顶弹出，多个排队连续弹；隐藏 > 荣誉 > 普通 ———————————— */
+/* ———————————— 成就横幅：右下角小条叠层，不挡玩法，自动淡出 ———————————— */
 
 type AchLike = { id: string; name: string; desc: string; honor?: boolean; secret?: boolean }
 const achWeight = (a: AchLike) => (a.secret ? 3 : a.honor ? 2 : 1)
-const bannerQueue: AchLike[] = []
-let bannerBusy = false
 let bannerShownLife = 0
 let bannerShownPro = 0
+let bannerStackEl: HTMLElement | null = null
+
+function ensureBannerStack() {
+  if (bannerStackEl && document.body.contains(bannerStackEl)) return bannerStackEl
+  bannerStackEl = document.createElement('div')
+  bannerStackEl.id = 'ach-banner-stack'
+  bannerStackEl.className = 'ach-banner-stack'
+  document.body.appendChild(bannerStackEl)
+  return bannerStackEl
+}
 
 function queueBanner(list: AchLike[]) {
   if (!list.length) return
-  bannerQueue.push(...list)
-  // 权重高的先出：隐藏 > 荣誉 > 普通
-  bannerQueue.sort((a, b) => achWeight(b) - achWeight(a))
-  if (!bannerBusy) nextBanner()
-}
-
-function nextBanner() {
-  const a = bannerQueue.shift()
-  if (!a) { bannerBusy = false; return }
-  bannerBusy = true
-  document.getElementById('ach-banner')?.remove()
-  const w = achWeight(a)
-  const el = document.createElement('div')
-  el.id = 'ach-banner'
-  el.className = `ach-banner w${w}`
-  el.innerHTML = `<div class="ab-kicker">${w === 3 ? '隐藏成就' : w === 2 ? '荣誉' : '成就'}</div><div class="ab-name">${a.name}</div><div class="ab-desc">${a.desc}</div>`
-  document.body.appendChild(el)
-  window.setTimeout(() => el.classList.add('show'), 10)
-  const stay = fastForward ? 700 : w === 3 ? 3400 : w === 2 ? 2600 : 1900
-  window.setTimeout(() => {
-    el.classList.remove('show')
-    window.setTimeout(() => { el.remove(); nextBanner() }, 380)
-  }, stay)
+  const stack = ensureBannerStack()
+  const sorted = [...list].sort((a, b) => achWeight(b) - achWeight(a))
+  for (const a of sorted) {
+    const w = achWeight(a)
+    const el = document.createElement('div')
+    el.className = `ach-toast w${w}`
+    el.innerHTML = `<b>${a.name}</b><span>${w === 3 ? '隐藏' : w === 2 ? '荣誉' : '成就'}</span>`
+    stack.appendChild(el)
+    while (stack.children.length > 4) stack.firstElementChild?.remove()
+    window.setTimeout(() => el.classList.add('show'), 10)
+    const stay = fastForward ? 500 : w === 3 ? 2200 : w === 2 ? 1600 : 1200
+    window.setTimeout(() => {
+      el.classList.remove('show')
+      window.setTimeout(() => el.remove(), 320)
+    }, stay)
+  }
 }
 
 /** 人生里新解锁的成就 → 横幅 */
@@ -179,7 +187,7 @@ function bannerFromPro() {
 }
 
 const ENDING_NAME: Record<string, string> = {
-  banned: '永封', landed: '上岸',
+  banned: '永封', landed: '上岸', dark_scorn: '万人唾弃', dark_delta: '天赋带到三角洲', dark_shame: '羞愧里终老',
   lifetime_ban: '终身禁赛', fix_ruin: '那笔钱', hell_return: '地狱归来', quit: '回家', legend: '一代传奇',
   world_champion: '世界冠军', regional_king: '赛区名将', evergreen: '常青树', bench: '板凳', journeyman: '打工人',
   aimbot: '人形自走挂', unstuck: '从没卡过', latebloom: '越老越妖', glasshand: '伤仲永',
@@ -191,10 +199,43 @@ for (const m of Object.keys(MAJOR_NAME) as Array<keyof typeof MAJOR_NAME>) {
 
 const dirtyN = (g: LifeState) => g.dirty.boostJobs + g.dirty.hires + g.dirty.cheatSeasons
 
-/** 经验行：Lv · 细条 */
-function expLine(level = meta.growth.level, exp = meta.growth.exp) {
+function darkBtnHtml() {
+  // 常驻：走过黑暗线也不藏，下辈子还能再点
+  return '<button type="button" class="btn btn-danger btn-dark-side" id="btn-dark">堕入黑暗</button>'
+}
+function bindDarkBtn() {
+  $('btn-dark')?.addEventListener('click', () => {
+    meta.startDark = true
+    meta.darkEntered = true
+    meta.darkPrompted = true
+    writeMeta(meta)
+    startLife()
+  })
+}
+/** 结算页主操作：左边堕入黑暗（次要），右边再来一辈子（主按钮） */
+function settleAgainRow(againHtml: string) {
+  return `<div class="settle-main">${darkBtnHtml()}${againHtml}</div>`
+}
+
+/** 黑暗线 / 职业脏档时给整页加一圈微红光 */
+function syncDarkChrome(on?: boolean) {
+  const lit = on ?? !!(life?.darkPath || (meta.pro.active && meta.proDark))
+  document.documentElement.classList.toggle('path-dark', lit)
+}
+
+/** 经验行：Lv · 细条；传 gain 时新加的那截用绿条区分 */
+function expLine(level = meta.growth.level, exp = meta.growth.exp, gain = 0) {
   const need = levelNeed(level)
-  return `<div class="exp-line"><span class="lv">Lv <b class="num">${level}</b></span><div class="exp-bar"><i style="width:${clamp((exp / need) * 100, 0, 100)}%"></i></div><span class="num tip">${exp}/${need}</span></div>`
+  const pct = clamp((exp / need) * 100, 0, 100)
+  let bar: string
+  if (gain > 0) {
+    const oldPct = clamp((Math.max(0, exp - gain) / need) * 100, 0, pct)
+    const newPct = Math.max(0, pct - oldPct)
+    bar = `<div class="exp-bar dual"><i class="exp-base" style="width:${oldPct}%"></i><i class="exp-new" style="width:${newPct}%"></i></div>`
+  } else {
+    bar = `<div class="exp-bar"><i style="width:${pct}%"></i></div>`
+  }
+  return `<div class="exp-line"><span class="lv">Lv <b class="num">${level}</b></span>${bar}<span class="num tip">${exp}/${need}</span></div>`
 }
 
 const pct1 = (n: number) => (Math.round(n * 10) / 10).toFixed(1)
@@ -335,6 +376,19 @@ function proTalentPlate(t: TalentTier, hidden: HiddenTalent | null) {
   </div>`
 }
 
+function levelBonusHtml() {
+  const raw = meta.growth.level * TALENT_SHIFT_PER
+  if (raw <= 0) return ''
+  return `<span class="exp-bonus">等级加成 <b class="num">+${pct1(raw)}%</b></span>`
+}
+
+function achBonusHtml() {
+  const raw = achCount(meta) * TALENT_SHIFT_PER
+  if (raw <= 0) return ''
+  const capped = currentShift(meta) >= TALENT_SHIFT_CAP
+  return `<span class="exp-bonus">成就加成 <b class="num">+${pct1(raw)}%</b>${capped ? ' · 到顶' : ''}</span>`
+}
+
 /** 下辈子职业档位条（跟天梯同一套概率，换名字） */
 function proTalentBar() {
   const shift = currentShift(meta)
@@ -347,10 +401,14 @@ function proTalentBar() {
   }).join('')
   const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${PRO_TALENT_INFO[t].name}</span>`).join('')
   return `<div class="section" style="padding-bottom:10px">
-    <div class="row" style="border-bottom:0;padding:0 0 8px"><span class="label" style="margin:0">下辈子职业天花板</span>${expLine()}</div>
+    <div class="row" style="border-bottom:0;padding:0 0 8px;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="label" style="margin:0">下辈子职业天花板</span>
+      ${expLine()}
+      ${levelBonusHtml()}
+    </div>
     <div class="tal-stack">${segs}</div>
     <div class="tal-legend">${legend}</div>
-    <div class="tal-bonus-line"><span class="tag"><i></i>国一 + GOAT <b class="num">${pct1(hi)}%</b>${shift > 0 ? `<span class="up">含加成 +${pct1(shift)}%</span>` : ''}</span></div>
+    <div class="tal-hi-line">国一 + GOAT <b class="num">${pct1(hi)}%</b></div>
   </div>`
 }
 
@@ -360,13 +418,13 @@ const MEDAL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="curre
 const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.9 6.6 7.1.7-5.4 4.8 1.6 7L12 17.4 5.8 21l1.6-7L2 9.3l7.1-.7L12 2z"/></svg>'
 const FLAG_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 2h2v20H5V2zm3 1h11l-2 4 2 4H8V3z"/></svg>'
 type TrophyKind = 'regional' | 'intl' | 'world' | 'fmvp' | 'cap' | 'owwc'
-const TROPHY_INFO: Record<TrophyKind, { svg: string; name: string }> = {
-  regional: { svg: CUP_SVG, name: '赛区冠军' },
-  intl: { svg: MEDAL_SVG, name: '国际赛前二' },
-  world: { svg: CUP_SVG, name: '世界冠军' },
-  fmvp: { svg: STAR_SVG, name: 'FMVP' },
-  cap: { svg: FLAG_SVG, name: '国家队' },
-  owwc: { svg: CUP_SVG, name: '世界杯冠军' },
+const TROPHY_INFO: Record<TrophyKind, { svg: string; name: string; metal: 'gold' | 'silver' | 'bronze' }> = {
+  regional: { svg: CUP_SVG, name: '赛区冠军', metal: 'gold' },
+  intl: { svg: MEDAL_SVG, name: '国际赛前二', metal: 'silver' },
+  world: { svg: CUP_SVG, name: '世界冠军', metal: 'gold' },
+  fmvp: { svg: STAR_SVG, name: 'FMVP', metal: 'gold' },
+  cap: { svg: FLAG_SVG, name: '国家队', metal: 'bronze' },
+  owwc: { svg: CUP_SVG, name: '世界杯冠军', metal: 'gold' },
 }
 let trophyShown: Record<TrophyKind, number> = { regional: 0, intl: 0, world: 0, fmvp: 0, cap: 0, owwc: 0 }
 function trophyCounts(): Record<TrophyKind, number> {
@@ -384,44 +442,48 @@ function renderTrophies(id: string, animate: boolean) {
     for (let i = 0; i < now[k]; i++) {
       total++
       const fresh = animate && i >= (trophyShown[k] ?? 0)
-      html += `<span class="trophy t-${k}${fresh ? ' new' : ''}" title="${TROPHY_INFO[k].name}">${TROPHY_INFO[k].svg}</span>`
+      const metal = TROPHY_INFO[k].metal
+      html += `<span class="trophy t-${k} metal-${metal}${fresh ? ' new' : ''}" title="${TROPHY_INFO[k].name}">${TROPHY_INFO[k].svg}</span>`
     }
   }
-  box.innerHTML = total
-    ? `<div class="trophy-row">${html}</div><div class="trophy-legend">${order.filter((k) => now[k] > 0).map((k) => `<span class="t-${k}">${TROPHY_INFO[k].name} ×${now[k]}</span>`).join('')}</div>`
-    : '<span class="trophy-empty">还没奖杯 · 赛区冠军 / 国际赛 / 世界冠军会摆在这儿</span>'
+  box.innerHTML = total ? `<div class="trophy-row">${html}</div>` : ''
   trophyShown = { ...now }
 }
 
 /* ———————————— 首页 ———————————— */
 
-/** 下辈子天赋：固定条 + 加成层；右侧写清楚这一级加了多少、下一级再加多少 */
+/** 下辈子天赋：等级加成写在经验行；天才/怪物只报合计 */
 function talentBar() {
   const shift = currentShift(meta)
   const probs = talentProbs(shift)
   const hi = probs.genius + probs.monster
   const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${TALENT_INFO[t].name}</span>`).join('')
-  const capped = shift >= 15
   return `<div class="section" style="padding-bottom:10px">
-    <div class="row" style="border-bottom:0;padding:0 0 8px"><span class="label" style="margin:0">下辈子投胎</span>${expLine()}</div>
+    <div class="row" style="border-bottom:0;padding:0 0 8px;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="label" style="margin:0">下辈子投胎</span>
+      ${expLine()}
+      ${levelBonusHtml()}
+    </div>
     ${talentStack(shift)}
     <div class="tal-legend">${legend}</div>
-    <div class="tal-bonus-line">
-      <span class="tag"><i></i>天才 + 怪物 <b class="num">${pct1(hi)}%</b>${shift > 0 ? `<span class="up">（加成 +${pct1(shift)}%${capped ? '，到顶了' : ''}）</span>` : ''}</span>
-    </div>
+    <div class="tal-hi-line">天才 + 怪物 <b class="num">${pct1(hi)}%</b></div>
   </div>`
 }
 
-/** 成就奖励：首页只亮名字，详情去成就页看 */
+/** 成就奖励：chip 分行；成就加成写在这里 */
 function perkLine() {
   const n = achCount(meta)
   const got = ACH_PERKS.filter((p) => n >= p.n)
   const next = ACH_PERKS.find((p) => n < p.n)
-  if (!got.length && !next) return ''
+  if (!got.length && !next && !achBonusHtml()) return ''
   const chips = got.map((p) => `<span class="perk-chip" title="${p.desc}">${p.name}</span>`).join('')
   const nextChip = next ? `<span class="perk-chip next">还差 ${next.n - n} · ${next.name}</span>` : ''
   return `<div class="section" style="padding-top:8px">
-    <div class="row" style="border-bottom:0;padding:0 0 6px"><span class="label" style="margin:0">成就奖励</span><span class="tip">${got.length}/${ACH_PERKS.length}</span></div>
+    <div class="row" style="border-bottom:0;padding:0 0 6px;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="label" style="margin:0">成就奖励</span>
+      <span class="tip">${got.length}/${ACH_PERKS.length}</span>
+      ${achBonusHtml()}
+    </div>
     <div class="perk-chips">${chips}${nextChip}</div>
   </div>`
 }
@@ -431,6 +493,7 @@ function renderHome() {
   stopProTimer()
   fastForward = false
   life = null
+  syncDarkChrome(false)
   const achN = achCount(meta)
   const p = meta.pro
   const best = meta.bestPeakScore ? rankInline(scoreToRank(meta.bestPeakScore)) : '<span class="sys">—</span>'
@@ -476,8 +539,15 @@ function renderHome() {
   $('btn-settings')!.onclick = renderSettings
   $('btn-wipe')!.onclick = () => {
     if (!confirm('删档重来：等级、职业生涯、职业拉黑全部清零，成就与结局收集保留。确定？')) return
-    Object.assign(meta, freshMeta(), { speed: meta.speed, manual: meta.manual, achievements: meta.achievements, endings: meta.endings })
+    const keep = { speed: meta.speed, manual: meta.manual, achievements: meta.achievements, endings: meta.endings, theme: meta.theme }
+    clearAllSaves()
+    replaceMeta(Object.assign(freshMeta(), keep))
+    meta.darkEntered = false
+    meta.darkPrompted = false
+    meta.startDark = false
+    meta.proDark = false
     writeMeta(meta)
+    life = null
     renderHome()
   }
   mountDebug()
@@ -492,6 +562,23 @@ function mountDebug() {
   d.id = 'debug-drawer'
   d.className = 'debug'
   const acts: Array<[string, () => void]> = [
+    ['完全重制', () => {
+      if (!confirm('完全重制：清空 localStorage 全部存档（成就/结局/等级/黑暗标记全没）。确定？')) return
+      replaceMeta(hardResetMeta())
+      life = null
+      committed = false
+      commitResult = null
+      renderHome()
+    }],
+    ['清黑暗标记', () => {
+      meta.darkEntered = false
+      meta.darkPrompted = false
+      meta.startDark = false
+      meta.proDark = false
+      writeMeta(meta)
+      syncDarkChrome(false)
+      alert('已清黑暗标记')
+    }],
     ['下辈子必怪物', () => { meta.debugTalent = 'monster' }],
     ['下辈子必天才', () => { meta.debugTalent = 'genius' }],
     ['下辈子必木桶', () => { meta.debugTalent = 'barrel' }],
@@ -581,28 +668,18 @@ function refreshHud() {
   const peak = scoreToRank(g.peakScore)
   set('hud-meta', `<span>S<span class="num">${g.season}</span> · <span class="num">${g.age}</span> 岁 · ${STAGE_INFO[g.stage].name}</span><span>峰值 ${rankInline(peak)}</span><span class="num tip">${fmt(g.gamesTotal)} 把${fastForward ? ' · 快进' : ''}</span>`)
   set('hud-rank', rankHtml(g.rank))
-  const stuck = g.stuckSeasons ? `<span class="flag warn">X1·99 卡了 ${g.stuckSeasons} 季</span>` : ''
-  const flags = [
-    stuck,
-    g.spurtSeasons ? `<span class="flag win">手感爆发</span>` : '',
-    g.crewSeasons ? `<span class="flag">车队五排</span>` : '',
-    g.injured ? `<span class="flag warn">手腕</span>` : '',
-    dirtyN(g) ? `<span class="flag warn">黑历史 ${dirtyN(g)}</span>` : '',
-    g.achLocked ? '<span class="flag ban">成就锁定</span>' : '',
-  ].join('')
-  set('hud-flags', flags)
   const per = Math.max(1, STAGE_INFO[g.stage].games)
   const left = Math.floor(g.passion / per)
   setHp('hud-hp', g.passion, g.passionMax, left <= 0 ? '快撑不住了' : `还能打 ${left} 季`, hudPrev?.passion ?? null)
   if (!$('res-cash')) set('hud-res', `${resBar('cash', g.cash, 'res-cash')}${resBar('fans', g.fans, 'res-fans')}`)
   else { paintRes('cash', g.cash, 'res-cash'); paintRes('fans', g.fans, 'res-fans') }
-  // 数字不飘：涨跌看条长，升档才爆粒子
   hudPrev = { passion: g.passion, cash: g.cash, fans: g.fans }
 }
 
 function renderLife() {
   if (!life) return
   const g = life
+  syncDarkChrome(!!g.darkPath)
   app.innerHTML = `
     <div class="top">
       <h2>天梯人生</h2>
@@ -617,7 +694,6 @@ function renderLife() {
     ${hpBar('hud-hp')}
     <div class="res-row">
       <div class="res-group" id="hud-res"></div>
-      <div class="flags" id="hud-flags"></div>
     </div>
     ${meta.manual ? '<div class="manual-tip">点左栏 · 过一季</div>' : ''}
     <div class="log-cols">
@@ -658,12 +734,52 @@ function resumeLife() {
 
 function tickLife() {
   if (!life || paused) return
+  if (life.awaitingDark) {
+    stopTimer()
+    showDarkChoice()
+    return
+  }
   const r = lifeStep()
   flushLogs()
   refreshHud()
   bannerFromLife()
+  if (life.awaitingDark) {
+    stopTimer()
+    showDarkChoice()
+    return
+  }
   if (r === 'done') { stopTimer(); timer = window.setTimeout(renderLifeSettle, 1400); return }
   if (!meta.manual) timer = window.setTimeout(tickLife, tickMs('life'))
+}
+
+function showDarkChoice() {
+  if (document.getElementById('dark-mask')) return
+  if (!life?.awaitingDark) return
+  const el = document.createElement('div')
+  el.id = 'dark-mask'
+  el.className = 'mask'
+  el.innerHTML = `<div class="mask-box dark-box">
+    <div class="mask-title">堕入黑暗？</div>
+    <p class="tip" style="color:var(--bone);margin:0 0 12px">只会问这一次。上分更快，被永封 / 职业禁赛的风险也更高。</p>
+    <button class="btn btn-danger" id="dark-boost">请代练</button>
+    <button class="btn btn-danger" id="dark-cheat">开挂</button>
+    <button class="btn" id="dark-no">算了</button>
+  </div>`
+  document.body.appendChild(el)
+  const done = (pick: 'refuse' | 'boost' | 'cheat') => {
+    if (!life) return
+    chooseDark(life, pick)
+    meta.darkPrompted = true
+    if (pick !== 'refuse') meta.darkEntered = true
+    writeMeta(meta)
+    el.remove()
+    flushLogs()
+    refreshHud()
+    if (!meta.manual) tickLife()
+  }
+  $('dark-boost')!.onclick = () => done('boost')
+  $('dark-cheat')!.onclick = () => done('cheat')
+  $('dark-no')!.onclick = () => done('refuse')
 }
 
 /* ———————————— 人生结算 ———————————— */
@@ -687,8 +803,8 @@ function expCard(exp: number, ups: number, achBefore: number) {
     : `<span class="lv-jump"><span class="num">Lv ${meta.growth.level}</span></span>`
   return `<div class="section grow-card">
     <div class="row" style="border-bottom:0;padding:0 0 8px">
-      <span class="label" style="margin:0">经验 <b class="num" style="color:var(--brass)">+${exp}</b>${ups ? ` <span class="win">升 ${ups} 级</span>` : ''}</span>
-      ${expLine()}
+      <span class="label" style="margin:0">经验 <b class="exp-gain">+${exp}</b>${ups ? ` <span class="win">升 ${ups} 级</span>` : ''}</span>
+      ${expLine(meta.growth.level, meta.growth.exp, exp)}
     </div>
     <div class="grow-row">
       ${lvHtml}
@@ -778,23 +894,42 @@ function renderLifeSettle() {
   const talk = crowdTalk(g, toPro)
   const years = g.age - START_AGE
 
-  const head = toPro
+  const isDark = !!g.darkPath
+  const darkBan = isDark && !!(g.banned || g.ending?.id === 'dark_scorn')
+  syncDarkChrome(isDark)
+  const darkTitle = g.ending?.title ?? (darkBan ? '万人唾弃' : '黑暗线退坑')
+  const endingCard = g.ending ? `<div class="section ending-card${isDark ? ' dark-end' : ''}">
+        <h2>${g.ending.title}</h2>
+        <div class="tip">${g.ending.rankLabel}</div>
+        ${g.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
+      </div>` : ''
+
+  const head = isDark
+    ? `<div class="dark-banner${darkBan ? ' stamped' : ''}">
+        ${darkBan ? '<div class="dark-stamp">永久封停</div>' : '<div class="dark-stamp soft">黑暗线</div>'}
+        <div class="sub">黑暗线 · ${g.age} 岁${darkBan ? ' · 永封' : ''}</div>
+        <div class="rank-hero"><span class="ban">${darkTitle}</span></div>
+        ${darkBan ? '<div class="dark-id">该账号因使用第三方程序被永久封停 · 申诉入口是灰的</div>' : '<div class="dark-id">捷径走完了。档案上多了一笔洗不掉的记录。</div>'}
+      </div>`
+    : toPro
     ? `<div class="sub" style="margin:0 0 6px">试训通过 · ${g.age} 岁</div>
        <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">进入职业生涯</span></div>`
     : `<div class="sub" style="margin:0 0 6px">${START_AGE} → ${g.age} 岁 · 打了 ${years} 年 · ${g.banned ? '<span class="ban">永封</span>' : '退坑'}</div>
        <div class="rank-hero" style="text-align:center;font-size:2.8rem">${rankHtml(peak)}</div>`
 
-  app.innerHTML = `<div class="reveal">
+  app.innerHTML = `<div class="reveal${isDark ? ' dark-settle' : ''}">
     ${head}
     <div class="stat" style="justify-content:center;margin-top:6px">
       <span>${talentBadge(g.talent, g.hidden)}</span>
       <span>真实峰值 ${rankInline(real)}</span>
       <span>${g.season} 季 · ${fmt(g.gamesTotal)} 把</span>
+      ${dirtyN(g) ? `<span class="ban">黑历史 ${dirtyN(g)}</span>` : ''}
     </div>
-    <div class="btn-row">
-      ${toPro
-        ? '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯</button>'
-        : '<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>'}
+    ${isDark ? endingCard : ''}
+    <div class="btn-row settle-next">
+      ${!toPro
+        ? settleAgainRow('<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>')
+        : '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯</button>'}
       <button class="btn" id="home">回首页</button>
     </div>
     ${commitResult ? expCard(commitResult.exp, commitResult.ups, commitAchBefore) : ''}
@@ -805,15 +940,11 @@ function renderLifeSettle() {
         <div class="verse">教练说：「下周来报到。」天梯到此为止，接下来是 OWCS。</div>
         <div class="verse">这辈子的天赋会带进去：${TALENT_INFO[g.talent].name}。现金、人气、${dirtyN(g) ? '<span class="warn">还有黑历史</span>' : '干净的档案'}也一起。</div>
       </div>` : ''}
-    ${g.ending ? `<div class="section ending-card">
-        <h2>${g.ending.title}</h2>
-        <div class="tip">${g.ending.rankLabel}</div>
-        ${g.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
-      </div>` : ''}
+    ${!isDark ? endingCard : ''}
     <div class="dossier four">
       <div class="cell"><div class="label">钱包</div><div>${resBar('cash', g.cash, 'settle-cash')}</div></div>
       <div class="cell"><div class="label">人气</div><div>${resBar('fans', g.fans, 'settle-fans')}</div></div>
-      <div class="cell"><div class="label">卡分</div><div class="num">${g.stuckTotal}</div><small>季停在 X1·99</small></div>
+      <div class="cell"><div class="label">卡分</div><div class="num">${g.stuckTotal}</div><small>季</small></div>
       <div class="cell"><div class="label">阶段</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5">${STAGE_INFO[g.stage].name}</div><small>${g.persona.name}${dirtyN(g) ? ` · 黑历史 ${dirtyN(g)}` : ''}</small></div>
     </div>
     <div class="section crowd">
@@ -827,6 +958,7 @@ function renderLifeSettle() {
   appendTo('log-box', g.logs)
   animateStacks()
   $('again')?.addEventListener('click', startLife)
+  bindDarkBtn()
   $('go-pro')?.addEventListener('click', () => { life = null; startProRun() })
   $('home')!.onclick = () => { life = null; renderHome() }
   mountDebug()
@@ -857,6 +989,7 @@ function renderPro() {
   stopTimer()
   stopProTimer()
   life = null
+  syncDarkChrome(!!(meta.pro.active && meta.proDark))
   const p = meta.pro
   const top = pageTop('职业生涯', renderHome)
   const t = teamOf(p.teamId)
@@ -1000,20 +1133,34 @@ function renderProSettle() {
   const big = (l: LogLine) => l.cls === 'ending' || l.cls === 'ban' || l.cls === 'ach'
   const hl = [...p.highlights.filter(big), ...p.highlights.filter((l) => !big(l))].slice(0, 14)
   trophyShown = { regional: 0, intl: 0, world: 0, fmvp: 0, cap: 0, owwc: 0 }
-  app.innerHTML = `<div class="reveal">
-    <div class="sub" style="margin:0 0 6px">职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁</div>
-    <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">${p.ending ? p.ending.title : '退役'}</span></div>
-    <div class="trophies settle-cups" id="settle-trophies"></div>
-    <div class="btn-row">
-      <button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>
-      <button class="btn" id="home">回首页</button>
-    </div>
-    <div class="rule-brass"></div>
-    ${p.ending ? `<div class="section ending-card">
+  const shame = !!(p.lifetimeBan || !p.clean || p.ending?.id === 'lifetime_ban' || p.ending?.id === 'fix_ruin')
+  const banHard = !!(p.lifetimeBan || p.ending?.id === 'lifetime_ban' || p.ending?.id === 'fix_ruin')
+  syncDarkChrome(shame)
+  const title = p.ending?.title ?? '退役'
+  const head = shame
+    ? `<div class="dark-banner${banHard ? ' stamped' : ''}">
+        <div class="dark-stamp${banHard ? '' : ' soft'}">${banHard ? '永久封停' : '背调不过'}</div>
+        <div class="sub">职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁</div>
+        <div class="rank-hero"><span class="ban">${title}</span></div>
+        <div class="dark-id">${banHard ? (p.banReason || '该选手被永久禁止参加 OWCS 及其附属赛事。') : '共享账号 / 代练记录被翻了出来。这个赛区记住你了。'}</div>
+      </div>`
+    : `<div class="sub" style="margin:0 0 6px">职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁</div>
+       <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">${title}</span></div>`
+  const endingCard = p.ending ? `<div class="section ending-card${shame ? ' dark-end' : ''}">
         <h2>${p.ending.title}</h2>
         <div class="tip">${p.ending.rankLabel}</div>
         ${p.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
-      </div>` : ''}
+      </div>` : ''
+  app.innerHTML = `<div class="reveal${shame ? ' dark-settle' : ''}">
+    ${head}
+    <div class="trophies settle-cups" id="settle-trophies"></div>
+    ${shame ? endingCard : ''}
+    <div class="btn-row settle-next">
+      ${settleAgainRow('<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>')}
+      <button class="btn" id="home">回首页</button>
+    </div>
+    <div class="rule-brass"></div>
+    ${!shame ? endingCard : ''}
     ${newAchCards(newAch)}
     ${p.endExp != null ? expCard(p.endExp, p.endUps ?? 0, achCount(meta) - newAch.length) : ''}
     ${hl.length ? `<div class="section"><div class="label">生涯高光</div>${hl.map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
@@ -1024,6 +1171,7 @@ function renderProSettle() {
   renderTrophies('settle-trophies', false)
   animateStacks()
   $('again')?.addEventListener('click', startLife)
+  bindDarkBtn()
   $('home')!.onclick = renderHome
   mountDebug()
 }
@@ -1056,7 +1204,7 @@ function renderAbout() {
     </div>
     <div class="section">
       <div class="label">经验与等级</div>
-      <p class="tip" style="color:var(--bone)">每辈子结束按最高段位给经验，进职业、拿冠军再加。每一级、每一个成就，下辈子天才 / 怪物多 0.1%。成就攒到 5 / 10 / 15 … 90，陆续解锁 buff（成就页有明细）。</p>
+      <p class="tip" style="color:var(--bone)">每辈子结束按最高段位给经验，进职业、拿冠军再加。每一级、每一个成就，下辈子天才 / 怪物多一点（很克制）。成就攒到档位会解锁 buff（成就页有明细）。</p>
     </div>
     <div class="section">
       <div class="label">会发生什么</div>
@@ -1068,7 +1216,7 @@ function renderAbout() {
 
 function speedText() {
   const k = speedScale()
-  return `×${k} · 主玩法 ${(LIFE_TICK_MS * k / 1000).toFixed(2)}s · 职业 ${(PRO_TICK_MS * k / 1000).toFixed(2)}s`
+  return `×${k} · ${(LIFE_TICK_MS * k / 1000).toFixed(1)}s`
 }
 
 function settingsBody() {
@@ -1077,7 +1225,7 @@ function settingsBody() {
     <label class="row"><span class="k">手动模式（点日志推进一季 / 一场）</span><input type="checkbox" id="set-manual" ${meta.manual ? 'checked' : ''}></label>
     <div class="row" style="border-bottom:0"><span class="k">速度</span><span class="v num" id="speed-val">${speedText()}</span></div>
     <input type="range" id="set-speed" min="${MIN_SPEED}" max="${MAX_SPEED}" step="0.5" value="${speedScale()}">
-    <div class="tip" style="margin-top:6px">往右更慢。主玩法一季、职业一行，一起缩放。</div>
+    <div class="tip" style="margin-top:6px">往右更慢。职业 ×${PRO_TICK_RATIO.toFixed(1)}</div>
     <div class="row" style="border-bottom:0;padding-top:14px"><span class="k">外观</span><span class="v tip" id="theme-desc">${THEMES.find((t) => t.id === currentTheme())?.desc ?? ''}</span></div>
     <div class="seg" id="theme-seg" style="margin-top:6px;flex-wrap:wrap">${themes}</div>
   `

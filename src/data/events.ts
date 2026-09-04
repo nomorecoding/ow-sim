@@ -46,6 +46,10 @@ export const COMMON_EVENTS: LifeEvent[] = [
   { id: 'crew_off', weight: 4, when: (g) => g.crewSeasons > 0, run: (g) => { g.crewSeasons = 0; passion(g, -50); return `车队散了，群里最后一条消息是「我先退了」。${pd(-50)}。` } },
   { id: 'holiday', weight: 4, when: (g) => g.stage === 'student' || g.stage === 'worker', run: (g) => { passion(g, 100); return `放假了。${pd(100)}。` } },
   { id: 'netbar', weight: 2, run: (g) => { passion(g, 80); return `搬到网吧楼上。${pd(80)}。` } },
+  { id: 'second_wind', weight: 3, when: (g) => g.age >= 28, run: (g) => { passion(g, 140); return `不知道为什么，又想打了。你重装了客户端。${pd(140)}。` } },
+  { id: 'reunion', weight: 2, when: (g) => g.season >= 20, run: (g) => { passion(g, 120); return `老车队群里有人喊开黑。你去了，打到天亮。${pd(120)}。` } },
+  { id: 'owl_watch', weight: 2, run: (g) => { passion(g, 90); return `看完一场职业赛，手又痒了。${pd(90)}。` } },
+  { id: 'new_pc', weight: 2, when: (g) => g.cash >= 4000, run: (g) => { g.cash -= 3500; passion(g, 110); return `换了台机子。帧数上去了，心也热了。现金 −3500，${pd(110)}。` } },
   { id: 'gf', weight: 3, run: (g) => { passion(g, -80); return `谈恋爱了。${pd(-80)}。` } },
   { id: 'gf_ow', weight: 2, run: (g) => { passion(g, 60); return `对象也玩守望。${pd(60)}。` } },
   { id: 'breakup', weight: 2, run: (g) => { g.mmr += 40; passion(g, -40); return `分手了。这季疯狂上分，打完更空。${pd(-40)}。` } },
@@ -121,7 +125,7 @@ export const LIFE_EVENTS: LifeEvent[] = [
   { id: 'dropout', weight: 2, when: (g) => g.stage === 'student' && g.age >= 18 && g.age <= 20 && g.mmr >= S.diamond, hl: true,
     run: (g) => { g.stage = 'fulltime'; g.cash -= 1000; unlock(g, 'stage_fulltime'); return '你辍学了，全职打天梯。爸妈断了生活费，房租自己付。' } },
   { id: 'rent', weight: 5, when: (g) => g.stage === 'fulltime' && !g.rich, run: (g) => { g.cash -= 1500; return `房租到期。现金 −1500（${fmt(g.cash)}）。` } },
-  { id: 'boost_rent', weight: 4, when: (g) => g.stage === 'fulltime' && g.cash < 0, hl: true, run: (g) => {
+  { id: 'boost_rent', weight: 4, when: (g) => g.darkPath && g.stage === 'fulltime' && g.cash < 0, hl: true, run: (g) => {
     const c = irand(900, 1500)
     g.cash += c
     g.boostEarned += c

@@ -11,7 +11,7 @@ export interface RankState {
 }
 
 /** 天赋档：决定实力成长斜率分布与突破加成，一辈子不变 */
-export type TalentTier = 'barrel' | 'normal' | 'something' | 'genius' | 'monster'
+export type TalentTier = 'barrel' | 'scrub' | 'normal' | 'solid' | 'something' | 'genius' | 'monster'
 /** 隐藏天赋：极小概率叠在天赋之上，各自通向一个隐藏结局 */
 export type HiddenTalent = 'aim' | 'clutch' | 'late' | 'glass'
 
@@ -96,6 +96,8 @@ export interface LifeState {
   stuckSeasons: number
   /** 本局卡过墙的总季数（成就） */
   stuckTotal: number
+  /** 高龄掉峰后反复爬不回：连续挣扎季数（触发脱坑） */
+  struggleSeasons: number
   /** 曾触及的最高段位分（显示段位） */
   peakScore: number
   /** 曾触及的最高实力 */
@@ -152,6 +154,12 @@ export interface LifeState {
   refusedTrials: number
   /** 一辈子只触发一次的节点（死线等） */
   choiceUsed: Record<string, boolean>
+  /** 已走上堕入黑暗（代练/开挂可选） */
+  darkPath: boolean
+  /** 是否已弹出过黑暗邀请 */
+  darkOffered: boolean
+  /** UI：等玩家点黑暗抉择 */
+  awaitingDark: boolean
 
   logs: LogLine[]
   highlights: LogLine[]
@@ -277,6 +285,8 @@ export interface ProState {
   level: number
   /** 生涯最高赛事高度 */
   peakLevel: number
+  /** 生涯签过的最高队档（Lipschitz：不跌回草根） */
+  peakTeamTier: Team['tier'] | null
   /** 当前赛事高度下的具体赛事与名次，如「大锤杯 · 16 强」 */
   lvNote: string
   /** 历史结局收集 */
@@ -318,6 +328,14 @@ export interface MetaSave {
   /** 调试：下局强制天赋 */
   debugTalent?: TalentTier
   debugHidden?: HiddenTalent
+  /** 下一世从结算「堕入黑暗」开局 */
+  startDark?: boolean
+  /** 堕入黑暗弹窗已提示过（整档只弹一次，拒绝后也不再弹） */
+  darkPrompted?: boolean
+  /** 走过黑暗线（统计用；结算按钮仍常驻） */
+  darkEntered?: boolean
+  /** 当前职业生涯来自黑暗线天梯（界面泛红 + 背调加重） */
+  proDark?: boolean
 
   /* —— 职业阶段 —— */
   pro: ProState

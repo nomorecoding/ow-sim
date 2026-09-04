@@ -38,7 +38,7 @@ export function buildCloudMudEnding(major: MajorTier, age: number): SeasonEnding
 
 /* ———————————— 天梯人生结局 ———————————— */
 
-export type LifeEndReason = 'quit' | 'age' | 'banned' | 'landed'
+export type LifeEndReason = 'quit' | 'age' | 'banned' | 'landed' | 'dark_delta' | 'dark_shame'
 
 const PEAK_TITLE: Record<MajorTier, [string, string]> = {
   bronze: ['青铜养老', '你在青铜打了一辈子。队友换了几百个，没一个记得你。'],
@@ -108,13 +108,45 @@ export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEndi
   const eulogy = EULOGY[Math.floor(Math.random() * EULOGY.length)]
 
   if (reason === 'banned') {
+    const scorn = g.darkPath
     return {
-      id: 'banned', title: '永封 · 官方验证通过', rankLabel: label,
+      id: scorn ? 'dark_scorn' : 'banned',
+      title: scorn ? '万人唾弃' : '永封 · 官方验证通过',
+      rankLabel: label,
+      verse: scorn
+        ? [
+          '登录页是灰的。贴吧、超话、群聊里你的 ID 被挂成表情包。',
+          bio + '捷径走完了，终点是公告栏。',
+          story,
+          '没人记得你打过的好局。只记得你开过挂。',
+        ]
+        : [
+          '登录时跳出一行字：该账号因使用第三方程序被永久封停。申诉入口是灰的。',
+          bio + '最后那一分没自己打上去。',
+          story,
+          '开挂之后解锁的成就一个没算。这个 ID 以后没有战队会看。',
+        ],
+    }
+  }
+  if (reason === 'dark_delta') {
+    return {
+      id: 'dark_delta', title: '天赋带到三角洲', rankLabel: label,
       verse: [
-        '登录时跳出一行字：该账号因使用第三方程序被永久封停。申诉入口是灰的。',
-        bio + '最后那一分没自己打上去。',
+        '守望的号还在，你不敢登。你把「枪感」带到了另一款游戏。',
+        '三个月后，那边的邮箱也来了封禁通知。天赋是真的，运气也是真的——坏的那种。',
+        bio,
         story,
-        '开挂之后解锁的成就一个没算。这个 ID 以后没有战队会看。',
+      ],
+    }
+  }
+  if (reason === 'dark_shame') {
+    return {
+      id: 'dark_shame', title: '羞愧里终老', rankLabel: label,
+      verse: [
+        '你没被抓。你也没再打。抽屉里的外设落了灰。',
+        '很多年后孩子也玩守望。政审查到你的旧号记录，号没了。他问你为什么。你说：爸爸以前不太干净。',
+        bio,
+        story,
       ],
     }
   }

@@ -38,13 +38,13 @@ export function talentShift(achievements: number, level: number): number {
   return Math.min(TALENT_SHIFT_CAP, (achievements + level) * TALENT_SHIFT_PER)
 }
 
-/** 各档概率（百分比）：底盘固定，天才 / 怪物随 shift 上移，从木桶 / 普通里按比例扣 */
+/** 各档概率（百分比）：底盘固定，天才 / 怪物随 shift 上移，从木桶 / 平庸 / 普通里按比例扣 */
 export function talentProbs(shift: number): Record<TalentTier, number> {
   const out = {} as Record<TalentTier, number>
   for (const t of TALENT_ORDER) out[t] = TALENT_INFO[t].base
-  const low = out.barrel + out.normal
-  out.barrel -= shift * (out.barrel / low)
-  out.normal -= shift * (out.normal / low)
+  const lowPool: TalentTier[] = ['barrel', 'scrub', 'normal']
+  const low = lowPool.reduce((a, t) => a + out[t], 0) || 1
+  for (const t of lowPool) out[t] -= shift * (out[t] / low)
   out.genius += shift * TALENT_SHIFT_GENIUS
   out.monster += shift * (1 - TALENT_SHIFT_GENIUS)
   for (const t of TALENT_ORDER) out[t] = Math.round(out[t] * 10) / 10

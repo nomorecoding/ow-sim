@@ -35,9 +35,10 @@ export const RANK_COLOR_CLASS: Record<MajorTier, string> = {
   top: 'rank-top',
 }
 
-/** 滚屏节奏：主玩法一季 0.1s，职业一行 0.15s；设置里的「速度」是统一倍率，两边一起缩放 */
+/** 滚屏节奏：基准一季 0.1s；职业按系数加长；设置里的速度是统一倍率 */
 export const LIFE_TICK_MS = 100
 export const PRO_TICK_MS = 150
+export const PRO_TICK_RATIO = PRO_TICK_MS / LIFE_TICK_MS
 export const DEFAULT_SPEED = 1
 export const MIN_SPEED = 0.5
 export const MAX_SPEED = 10
@@ -46,24 +47,26 @@ export const MAX_SPEED = 10
 
 export const START_AGE = 16
 export const SEASONS_PER_YEAR = 4
-/** 强制退坑年龄 */
-export const QUIT_AGE = 31
+/** 强制退坑年龄（热情见底更常见；能熬到这边靠热情 up 方差） */
+export const QUIT_AGE = 52
 /** 被发掘的年龄上限 */
-export const SCOUT_MAX_AGE = 21
+export const SCOUT_MAX_AGE = 23
+/** 第几季后首次询问是否堕入黑暗 */
+export const DARK_OFFER_SEASON = 10
 
-/** 开局热情 */
-export const PASSION_START: [number, number] = [1000, 1300]
+/** 开局热情：方差拉大；略抬高以把单局墙钟再拉长约 2s */
+export const PASSION_START: [number, number] = [1100, 2000]
 /** 新的一年：新赛季新鲜感 */
-export const NEW_YEAR_PASSION = 40
+export const NEW_YEAR_PASSION = 90
 /** 热情预警：低于下季消耗 × 此倍数 */
 export const PASSION_WARN_MULT = 1.5
 
 /** 人生阶段：每季热情消耗（≈ 把数）、斜率系数 */
 export const STAGE_INFO: Record<LifeStage, { name: string; games: number; slope: number; desc: string }> = {
-  student: { name: '学生', games: 100, slope: 1.0, desc: '课少时间多' },
-  fulltime: { name: '全职', games: 150, slope: 1.2, desc: '全天肝，房租自己付' },
-  worker: { name: '上班', games: 55, slope: 0.75, desc: '下班才能打' },
-  free: { name: '自由', games: 90, slope: 1.0, desc: '不用上班了' },
+  student: { name: '学生', games: 88, slope: 0.95, desc: '课少时间多' },
+  fulltime: { name: '全职', games: 120, slope: 1.1, desc: '全天肝，房租自己付' },
+  worker: { name: '上班', games: 45, slope: 0.7, desc: '下班才能打' },
+  free: { name: '自由', games: 75, slope: 0.95, desc: '不用上班了' },
 }
 
 /** 财富自由门槛（基本只有职业奖金能达到） */
@@ -71,7 +74,7 @@ export const FREE_CASH = 300000
 
 /* ———————————— 天赋（终身） ———————————— */
 
-export const TALENT_ORDER: TalentTier[] = ['barrel', 'normal', 'something', 'genius', 'monster']
+export const TALENT_ORDER: TalentTier[] = ['barrel', 'scrub', 'normal', 'solid', 'something', 'genius', 'monster']
 
 export const TALENT_INFO: Record<TalentTier, {
   name: string; base: number; cls: string
@@ -83,56 +86,84 @@ export const TALENT_INFO: Record<TalentTier, {
   start: [number, number]
   range: string
 }> = {
-  barrel:    { name: '木桶',     base: 32,  cls: 'tal-0', slope: 50,  sigma: 60,  breakBonus: -0.10, start: [0, 700],     range: '天花板在黄金附近' },
-  normal:    { name: '普通',     base: 41,  cls: 'tal-1', slope: 100, sigma: 70,  breakBonus: 0,     start: [200, 1000],  range: '白金–翡翠是常态' },
-  something: { name: '有点东西', base: 18,  cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
-  genius:    { name: '天才',     base: 7,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
-  monster:   { name: '怪物',     base: 2,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '500 强的料' },
+  barrel:    { name: '木桶',     base: 28,  cls: 'tal-0', slope: 42,  sigma: 55,  breakBonus: -0.12, start: [0, 600],     range: '天花板在黄金附近' },
+  scrub:     { name: '平庸',     base: 22,  cls: 'tal-1', slope: 70,  sigma: 60,  breakBonus: -0.05, start: [100, 850],   range: '白金上下晃' },
+  normal:    { name: '普通',     base: 25,  cls: 'tal-2', slope: 95,  sigma: 65,  breakBonus: 0,     start: [250, 1050],  range: '翡翠是常态' },
+  solid:     { name: '扎实',     base: 14,  cls: 'tal-3', slope: 125, sigma: 70,  breakBonus: 0.04,  start: [500, 1200],  range: '钻石可期' },
+  something: { name: '有点东西', base: 8,   cls: 'tal-4', slope: 155, sigma: 75,  breakBonus: 0.08,  start: [700, 1350],  range: '大师可期' },
+  genius:    { name: '天才',     base: 2.2, cls: 'tal-5', slope: 210, sigma: 85,  breakBonus: 0.14,  start: [950, 1550],  range: '宗师–英杰的料' },
+  monster:   { name: '怪物',     base: 0.8, cls: 'tal-6', slope: 290, sigma: 95,  breakBonus: 0.22,  start: [1250, 1750], range: '万里挑一' },
 }
 
 /**
  * 职业档位：天梯天赋带进职业后的叫法。
- * 木桶→蓝领，普通→路人王，有点东西→城市天才，天才→国一，怪物→GOAT。
+ * 木桶→蓝领 … 天才→国一，怪物→GOAT。国一 / GOAT 极稀。
  */
 export const PRO_TALENT_INFO: Record<TalentTier, { name: string }> = {
   barrel:    { name: '蓝领' },
+  scrub:     { name: '替补边缘' },
   normal:    { name: '路人王' },
+  solid:     { name: '稳定主力' },
   something: { name: '城市天才' },
   genius:    { name: '国一' },
   monster:   { name: 'GOAT' },
 }
 
 /* ———————————— 经验 / 等级：只改天才、怪物的概率 ———————————— */
-/** 每个成就、每一级 → 天才 + 怪物合计 +0.1%（从木桶 / 普通里挪） */
-export const TALENT_SHIFT_PER = 0.1
+/** 每个成就、每一级 → 天才 + 怪物合计挪一点（更克制） */
+export const TALENT_SHIFT_PER = 0.06
 /** 挪出去的部分里，天才 : 怪物 */
-export const TALENT_SHIFT_GENIUS = 0.65
+export const TALENT_SHIFT_GENIUS = 0.78
 /** 合计最多挪多少个百分点 */
-export const TALENT_SHIFT_CAP = 15
+export const TALENT_SHIFT_CAP = 8
 /** 升级所需经验：第 n 级 = BASE + n × STEP（线性递增） */
-export const LEVEL_EXP_BASE = 30
-export const LEVEL_EXP_STEP = 10
+export const LEVEL_EXP_BASE = 40
+export const LEVEL_EXP_STEP = 14
 /** 一辈子的经验 = 最高段位 + 职业成就（线性） */
 export const EXP_BY_MAJOR: Record<MajorTier, number> = {
-  bronze: 4, silver: 6, gold: 9, plat: 12, emerald: 16, diamond: 21, master: 28, gm: 36, champ: 46, top: 58,
+  bronze: 3, silver: 4, gold: 6, plat: 8, emerald: 11, diamond: 15, master: 20, gm: 26, champ: 34, top: 44,
 }
-export const EXP_PRO = { scouted: 15, year: 4, regional: 12, intl: 20, world: 35, fmvp: 25 }
+export const EXP_PRO = { scouted: 12, year: 3, regional: 10, intl: 16, world: 28, fmvp: 20 }
 
 /** 段位衰减：越高涨得越慢 */
 export const SLOPE_DECAY: Record<MajorTier, number> = {
   bronze: 1.0, silver: 0.95, gold: 0.9, plat: 0.8, emerald: 0.7, diamond: 0.55, master: 0.42, gm: 0.32, champ: 0.25, top: 0.2,
 }
 
-/** 年龄系数（斜率乘数，超过 30 岁额外每季自然退化） */
+/** 年龄系数：25 起分水岭，30 后上分很难，越往后几乎只掉不涨 */
 export function ageMult(age: number): number {
-  if (age <= 18) return 1.15
+  if (age <= 18) return 1.12
   if (age <= 21) return 1.05
-  if (age <= 24) return 0.9
-  if (age <= 27) return 0.65
-  if (age <= 30) return 0.35
-  return 0
+  if (age <= 24) return 0.92
+  if (age <= 26) return 0.55   // 25–26：开始明显下滑
+  if (age <= 29) return 0.28
+  if (age <= 34) return 0.1
+  if (age <= 40) return 0.03
+  return 0.01
 }
-export const AGE_DECAY_PER_SEASON = 40
+/** 过分水岭后每季额外掉分（随年龄加重） */
+export const AGE_DECAY_START = 25
+export const AGE_DECAY_PER_SEASON = 36
+export const AGE_DECAY_PER_YEAR = 6
+/** 掉峰多少分以上算「掉下去了」（约大半个大段） */
+export const STRUGGLE_GAP = 280
+/** 连续挣扎几季后开始滚脱坑概率 */
+export const STRUGGLE_QUIT_MIN = 2
+/** 脱坑基础概率；每多挣扎一季、每大一岁再叠 */
+export const STRUGGLE_QUIT_BASE = 0.12
+export const STRUGGLE_QUIT_PER_SEASON = 0.1
+export const STRUGGLE_QUIT_PER_AGE = 0.022
+export const STRUGGLE_QUIT_CAP = 0.65
+/** 没直接脱坑时，软削热情的概率 */
+export const STRUGGLE_PASSION_P = 0.4
+export const STRUGGLE_PASSION_HIT: [number, number] = [90, 200]
+
+/** 高龄过墙额外惩罚（加在突破概率上） */
+export function ageWallPenalty(age: number): number {
+  if (age < 25) return 0
+  if (age < 30) return (age - 24) * 0.02
+  return 0.1 + (age - 29) * 0.035
+}
 
 /* ———————————— 段位墙 ———————————— */
 
@@ -181,11 +212,11 @@ export const EXPOSED_BLOCK_LIVES = 2
 export const BOOST_LANDED_CASH = 100000
 
 /* ———————————— 被发掘 ———————————— */
-export const SCOUT_P: Partial<Record<MajorTier, number>> = { gm: 0.05, champ: 0.15, top: 0.3 }
+export const SCOUT_P: Partial<Record<MajorTier, number>> = { gm: 0.11, champ: 0.26, top: 0.48 }
 /** 试训通过基础概率（天赋加成另算） */
-export const TRIAL_BASE = 0.55
+export const TRIAL_BASE = 0.62
 /** 有代练 / 陪玩记录时试训通过率的折扣（开挂记录直接政审不过） */
-export const TRIAL_DIRTY_MULT = 0.6
+export const TRIAL_DIRTY_MULT = 0.55
 
 /* ———————————— 成就奖励：成就攒到一定数量，下辈子永久带着的 buff ————————————
  * 曲线：前期加的是「多打几季 / 更容易上去」，中后期加的是给那批小概率成就铺路——
@@ -221,8 +252,11 @@ export const GLASS_INJURY_P = 0.05
 export const GLASS_INJURY_MULT = 0.45
 export const GLASS_INJURY_PASSION = 200
 /** 晚熟：退坑年龄与被发掘年龄上限放宽；热情烧得慢（开局多给、每年多补） */
-export const LATE_QUIT_AGE = 36
-export const LATE_SCOUT_MAX_AGE = 27
+/** 晚熟：退坑年龄与被发掘年龄上限放宽；热情烧得慢（开局多给、每年多补） */
+export const LATE_QUIT_AGE = 58
+export const LATE_SCOUT_MAX_AGE = 30
+/** 晚熟的年龄分水岭比常人晚约 5 年 */
+export const LATE_AGE_OFFSET = 5
 export const LATE_PASSION_START = 300
 export const LATE_PASSION_YEAR = 130
 
@@ -290,6 +324,43 @@ export const TEAM_TIER_CLASS: Record<Team['tier'], string> = {
   world_a: 'tm-world-a',
   world_s: 'tm-world-s',
 }
+
+/**
+ * 战队档位硬封顶：队档 = 成绩天花板。个人再强也不能替二线队越阶夺冠。
+ * place / intl 数字越小越好（1 = 冠军）；null = 根本摸不到这层。
+ */
+export type TierCap = {
+  /** 常规赛最好名次（1 最好）；进不了季后则 ≥5 */
+  regBest: number
+  /** 能否进季后赛 */
+  playoffs: boolean
+  /** 赛区最好名次；null = 无季后名次 */
+  regionalBest: number | null
+  /** 赛区冠（place=1）出线后能否打国际赛 */
+  intl: boolean
+  /** 国际赛最好名次；null = 不出线 */
+  intlBest: number | null
+  /** 能否拿 EWC / 总决赛冠军（titles.world） */
+  worldTitle: boolean
+  /** 能否摇 FMVP */
+  fmvp: boolean
+}
+
+export const TIER_CAP: Record<Team['tier'], TierCap> = {
+  // 草根：常规赛末游，无季后
+  amateur: { regBest: 6, playoffs: false, regionalBest: null, intl: false, intlBest: null, worldTitle: false, fmvp: false },
+  // 预选档：常规中下游，无季后
+  cn_q:    { regBest: 5, playoffs: false, regionalBest: null, intl: false, intlBest: null, worldTitle: false, fmvp: false },
+  // 二线：最多赛区亚军出线，国际赛止步中游；不能赛区冠 / 世界冠
+  cn_mid:  { regBest: 2, playoffs: true,  regionalBest: 2,    intl: true,  intlBest: 5,    worldTitle: false, fmvp: false },
+  // 中国一线：赛区冠 + 可冲击世界冠
+  cn_top:  { regBest: 1, playoffs: true,  regionalBest: 1,    intl: true,  intlBest: 1,    worldTitle: true,  fmvp: true },
+  // 外援：按国际席次封顶；世界冠只给 S 档
+  world_c: { regBest: 4, playoffs: true,  regionalBest: 4,    intl: true,  intlBest: 7,    worldTitle: false, fmvp: false },
+  world_b: { regBest: 3, playoffs: true,  regionalBest: 3,    intl: true,  intlBest: 5,    worldTitle: false, fmvp: false },
+  world_a: { regBest: 2, playoffs: true,  regionalBest: 2,    intl: true,  intlBest: 3,    worldTitle: false, fmvp: false },
+  world_s: { regBest: 1, playoffs: true,  regionalBest: 1,    intl: true,  intlBest: 1,    worldTitle: true,  fmvp: true },
+}
 /** 地区名次奖金（人均分成） */
 export const STAGE_PRIZE = [0, 60000, 30000, 15000, 8000, 3000, 1500, 0, 0]
 /** 国际赛名次奖金（人均分成，基准）× 各站倍数 */
@@ -315,8 +386,9 @@ export const OWWC_PLACE = ['小组出局', '8 强', '4 强', '亚军', '冠军']
 
 /** 职业模式：可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
 export const PRO_RETIRE_MIN_AGE = 22
+/** 职业分水岭：25 起状态档明显变差 */
 export const PRO_DECLINE_AGE = 25
-export const PRO_FORCE_RETIRE_AGE = 31
+export const PRO_FORCE_RETIRE_AGE = 30
 /** 无队一年的生活开销 */
 export const PRO_IDLE_EXPENSE = 15000
 /** 「地狱归来」阈值：曾负债到此以下 / 之后单生涯职业收入 */
@@ -336,7 +408,9 @@ export const FORM_INFO: Record<Form, { name: string; min: number; max: number; b
 }
 export const PRO_GROWTH_CAP = 30
 /** 天赋 → 职业成长起点修正 */
-export const TALENT_PRO_BONUS: Record<TalentTier, number> = { barrel: -4, normal: 0, something: 3, genius: 6, monster: 10 }
+export const TALENT_PRO_BONUS: Record<TalentTier, number> = {
+  barrel: -5, scrub: -2, normal: 0, solid: 2, something: 4, genius: 7, monster: 11,
+}
 
 /** 队友名池 */
 export const MATE_NAMES = ['小北', '阿豪', 'Kiro', '沁沁', '老白', 'Zed', '丸子', 'Nine', '阿远', 'Lumi', '大只', 'Vex', '卷卷', 'Sora', '皮皮', 'Yuki']

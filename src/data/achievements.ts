@@ -6,6 +6,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'reach_master', name: '摸到大师', desc: '触及大师' },
   { id: 'reach_gm', name: '宗师', desc: '触及宗师' },
   { id: 'reach_champ', name: '英杰', desc: '触及英杰' },
+  { id: 'old_oil', name: '老了油了', desc: '三十岁以后还摸到英杰。年纪这么大还在上分真是辛苦你了，OW 不欢迎你。' },
   { id: 'reach_top', name: '500 强', desc: '打进国服 500 强榜单' },
   // —— 天赋 ——
   { id: 'talent_something', name: '有点东西', desc: '摇到「有点东西」' },
@@ -55,6 +56,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'fake_wall', name: '图标是真的', desc: '靠黑市上了一个大段' },
   { id: 'end_banned', name: '封号', desc: '被封了' },
   { id: 'end_landed', name: '上岸', desc: '接单收入十万' },
+  { id: 'end_dark_scorn', name: '万人唾弃', desc: '黑暗线被永封，全网挂你', secret: true },
+  { id: 'end_dark_delta', name: '天赋带到三角洲', desc: '侥幸没翻车，换游戏继续翻车', secret: true },
+  { id: 'end_dark_shame', name: '羞愧里终老', desc: '没被抓，但后代被政审', secret: true },
   // —— 结局 ——
   { id: 'end_quit', name: '退坑', desc: '一段天梯人生打完' },
   { id: 'scouted', name: '有人找你', desc: '试训通过，进入职业' },
