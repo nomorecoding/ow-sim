@@ -75,7 +75,7 @@ function drawQr(ctx: CanvasRenderingContext2D, text: string, x: number, y: numbe
   ctx.fillStyle = '#0c0c0d'
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
-      if (modules.get(r, c)) ctx.fillRect(x + c * cell, y + r * cell, cell + 0.5, cell + 0.5)
+      if (modules.get(c, r)) ctx.fillRect(x + c * cell, y + r * cell, cell + 0.5, cell + 0.5)
     }
   }
 }
