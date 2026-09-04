@@ -2,7 +2,7 @@
 
 静态单页文字模拟。**一局一辈子**：16 岁第一次打排位，一行一季往下滚，直到你不想打了——或者有人私信你来试训。
 
-**在线玩：https://nomorecoding.github.io/ow-sim/** （每次推 `main` 自动重新部署）
+**在线玩：https://ow-sim.fun/** （每次推 `main` 自动重新部署；旧地址 `nomorecoding.github.io/ow-sim` 仍可能短暂可用）
 
 ## 本地运行
 

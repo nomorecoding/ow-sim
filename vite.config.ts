@@ -7,7 +7,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 const single = process.env.SINGLE === '1'
 
 export default defineConfig({
-  base: single ? './' : (process.env.PAGES_BASE ?? '/ow-sim/'),
+  base: single ? './' : (process.env.PAGES_BASE ?? '/'),
   plugins: single ? [viteSingleFile()] : [],
   build: {
     outDir: single ? 'single' : 'dist',
