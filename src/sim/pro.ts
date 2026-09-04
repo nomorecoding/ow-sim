@@ -5,8 +5,8 @@
  */
 import type { Form, HiddenTalent, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, HIDDEN_INFO, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, MATE_NAMES,
-  PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_RETIRE_MIN_AGE,
+  CUPS, EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, HIDDEN_INFO, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, LV, MATE_NAMES,
+  PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_LEVELS, PRO_RETIRE_MIN_AGE,
   SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
 import { clamp, irand, rand } from './rank'
@@ -22,8 +22,15 @@ export function freshPro(): ProState {
     form: 'ok', skill: 55, fame: 0, benchYears: 0, idleYears: 0, yearScore: 0, history: [],
     titles: { regional: 0, intl: 0, world: 0, worldCup: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
     clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [],
-    yearDone: false, stageAt: 0, endings: {},
+    yearDone: false, stageAt: 0, level: 0, peakLevel: 0, endings: {},
   }
+}
+
+/** 赛事高度往上跳：只升不降（年初另行归零） */
+function levelUp(meta: MetaSave, lv: number) {
+  const p = meta.pro
+  if (lv > p.level) p.level = lv
+  if (lv > p.peakLevel) p.peakLevel = lv
 }
 
 export function teamOf(id: string | null | undefined): Team | null {
@@ -128,11 +135,9 @@ function* careerGen(meta: MetaSave): Generator<Tick, void, void> {
 
 /* ———————————— 工具 ———————————— */
 
-const MAPS = ['里阿尔托', '努巴尼', '好莱坞', '国王大道', '漓江塔', '伊利奥斯', '尼泊尔', '直布罗陀', '66号公路', '巴黎', '新皇后街', '科洛塞', '伊斯佩兰萨', '多拉多', '花村', '阿努比斯神殿']
 const WIN_MOMENTS = ['最后一波抢下决胜点', '你一个大招清了三个', '加时守住了', '第三图打到 99:99 拿下', '对面换阵你们跟上了', '教练暂停之后连扳两图']
 const LOSE_MOMENTS = ['推车差 0.3 米', '被对面辅助大招翻盘', '教练喊了暂停也没救回来', '对面 DPS 手感爆炸', '你的英雄被 ban 了，换手打得别扭', '对面换阵你们没跟上', '第三图打到 99:99 丢了']
 const OPP = ['韩国队', '北美队', '欧洲队', '日本队', '沙特队']
-const map = () => MAPS[irand(0, MAPS.length - 1)]
 const moment = (win: boolean) => (win ? WIN_MOMENTS : LOSE_MOMENTS)[irand(0, (win ? WIN_MOMENTS : LOSE_MOMENTS).length - 1)]
 /** 本生涯里散掉 / 解约过的队：当年不再报价 */
 const deadTeams = new Set<string>()
@@ -338,10 +343,11 @@ function applySign(meta: MetaSave, o: ProOffer, window = false) {
 function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
   const p = meta.pro
   p.yearScore = 0
+  p.level = 0
   // 年初：摇状态
   p.form = rollForm(p.growth + p.talentBonus, proAge(p))
   p.skill = irand(FORM_INFO[p.form].min, FORM_INFO[p.form].max)
-  L(meta, 'talent', `【第 ${p.year + 1} 年 · ${p.age} 岁】本年状态【${FORM_INFO[p.form].name}】`)
+  L(meta, 'talent', `【第 ${p.year + 1} 年 · ${p.age} 岁】状态【${FORM_INFO[p.form].name}】`)
   H(meta, { cls: 'talent', text: `状态【${FORM_INFO[p.form].name}】` })
   if (p.form === 'god') ach(meta, 'pro_form_god')
   yield 'step'
@@ -355,7 +361,7 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
       p.idleYears++
       meta.cash -= PRO_IDLE_EXPENSE
       addFame(meta, -Math.round(p.fame * 0.2))
-      L(meta, 'warn', `没有队。这一年在网吧、陪练和直播里过去了。开销 −${fm(PRO_IDLE_EXPENSE)}。`)
+      L(meta, 'warn', `没有队。这一年在网吧赛、陪练和直播里过去了。开销 −${fm(PRO_IDLE_EXPENSE)}。`)
     }
     yield 'step'
   }
@@ -369,14 +375,11 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
     for (const stage of [1, 2, 3] as const) {
       if (!p.teamId) break
       p.stageAt = stage
-      const t = teamOf(p.teamId)!
-      L(meta, 'career', `【OWCS 中国赛区 · 第 ${p.year + 1} 年 Stage ${stage}】${t.name}`)
-      yield 'step'
       if (p.suspended > 0) {
         p.suspended--
-        const r: StageResult = { year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, note: '禁赛' }
-        p.history.push(r)
-        L(meta, 'ban', `【禁赛期】你在看台上看完了整个 Stage。`)
+        const t = teamOf(p.teamId)!
+        p.history.push({ year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, note: '禁赛' })
+        L(meta, 'ban', `S${stage} · 禁赛期。你在看台上看完了整个 Stage。`)
         yield 'step'
         continue
       }
@@ -393,28 +396,26 @@ function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
 
 interface EventOut { skip: boolean; temp: number; bench: boolean }
 
-/** Stage 前的随机事件；可能带抉择 */
+/** Stage 前的随机事件：一半的 Stage 什么都不发生，发生了也只有一行 */
 function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut, void> {
   const p = meta.pro
   const t = teamOf(p.teamId)!
   const out: EventOut = { skip: false, temp: 0, bench: false }
   const r = rand()
-  const push = (cls: string, text: string, hl = false) => { const l = L(meta, cls, text); if (hl) H(meta, l) }
+  const push = (cls: string, text: string, hl = false) => { const l = L(meta, cls, `S${stage} · ${text}`); if (hl) H(meta, l) }
 
   // 玻璃手：手腕随时可能罢工
   if (p.hidden === 'glass' && rand() < 0.08) {
-    push('warn', '【手腕】训练赛打到第三张图，右手又开始麻。队医给你缠了绷带，这个 Stage 看台见。', true)
+    push('warn', '【手腕】训练赛打到第三张图，右手又开始麻。这个 Stage 看台见。', true)
     out.bench = true
     p.benchYears++
     yield 'step'
     return out
   }
 
-  if (r < 0.06) {
+  if (r < 0.05) {
     // 假赛邀约：缺钱的人更容易点头
     const money = irand(8, 25) * 10000
-    push('warn', `陌生人加了你：「这个 Stage 小组赛放两场，${fm(money)}，事成打款。」附一张转账截图当定金。`)
-    yield 'step'
     const takeP = meta.cash < -20000 ? 0.55 : meta.cash < 0 ? 0.25 : 0.06
     if (rand() < takeP) {
       meta.cash += money
@@ -422,10 +423,11 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
       p.fixes++
       p.clean = false
       out.temp = -15
-      push('ban', `你收了 ${fm(money)}。小组赛该输的都输了。`, true)
+      push('ban', `【假赛】陌生人私信：「小组赛放两场，${fm(money)}。」你收了。该输的都输了。`, true)
       ach(meta, 'pro_fix')
       if (rand() < 0.35) {
-        push('ban', '【官方公告】赛事监察部门比对投注数据，认定你参与操纵比赛。永久禁赛。', true)
+        yield 'step'
+        push('ban', '【官方公告】监察部门比对投注数据，认定你参与操纵比赛。永久禁赛。', true)
         p.lifetimeBan = true
         p.banReason = '参与操纵比赛。'
         p.teamId = null
@@ -435,45 +437,24 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
       }
     } else {
       addFame(meta, 800)
-      push('career', '你把截图发给了队长。队长转发给了官方。人气 +800。', true)
+      push('career', `【假赛】陌生人私信：「小组赛放两场，${fm(money)}。」你把截图发给了队长。人气 +800。`, true)
       ach(meta, 'pro_fix_refused')
     }
     yield 'step'
     return out
   }
-  if (r < 0.10) { push('warn', `【宫斗】${mate()} 和 ${mate()} 为首发位置闹到教练组，训练赛打成两派。你在中间。`); out.temp = -6; yield 'step'; return out }
-  if (r < 0.13) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【被挖】主力 ${mate()} 被${TEAMS[irand(0, 3)].name}挖走，队里少了个能开团的。`); yield 'step'; return out }
-  if (r < 0.16) { teamMods[t.id] = (teamMods[t.id] ?? 0) + 4; push('career', `【补强】战队签下韩援 ${mate()}。训练赛开始赢了。`); yield 'step'; return out }
-  if (r < 0.19) {
-    // 抱团：别家凑出超级队
+  if (r < 0.09) { push('warn', `【宫斗】${mate()} 和 ${mate()} 为首发位置闹到教练组，训练赛打成两派。你在中间。`); out.temp = -6; yield 'step'; return out }
+  if (r < 0.12) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【被挖】主力 ${mate()} 被${TEAMS[irand(0, 3)].name}挖走。`); yield 'step'; return out }
+  if (r < 0.15) { teamMods[t.id] = (teamMods[t.id] ?? 0) + 4; push('career', `【补强】战队签下韩援 ${mate()}。训练赛开始赢了。`); yield 'step'; return out }
+  if (r < 0.18) {
     const big = TEAMS[irand(0, 3)]
-    if (big.id !== t.id) { teamMods[big.id] = (teamMods[big.id] ?? 0) + 6; push('warn', `【抱团】${big.name} 一口气签了三个国家队选手。解说说这个 Stage 悬念不大。`); yield 'step'; return out }
+    if (big.id !== t.id) { teamMods[big.id] = (teamMods[big.id] ?? 0) + 6; push('warn', `【抱团】${big.name} 一口气签了三个国家队选手。`); yield 'step'; return out }
   }
-  if (r < 0.22) {
-    // enjoy：队伍摆烂
-    push('warn', `【enjoy】老板不投钱了，队里训练赛改成每天两小时。${mate()} 直播比训练时间长。`)
-    out.temp = -8
-    yield 'step'
-    return out
-  }
-  if (r < 0.25) {
-    // 板凳
-    push('warn', `【板凳】教练换了体系，这个 Stage 你坐替补席。首发是刚签的 ${mate()}。`, true)
-    out.bench = true
-    p.benchYears++
-    yield 'step'
-    return out
-  }
-  if (r < 0.27) {
-    // 脱粉
-    addFame(meta, -Math.round(p.fame * 0.25))
-    push('warn', `【脱粉】你直播说了句「这游戏也就这样」，粉丝群一夜掉了四分之一。`)
-    yield 'step'
-    return out
-  }
-  if (r < 0.29) {
-    // 被优化
-    push('ban', `【优化】俱乐部签了新人，经理约你谈话：「合同剩下的部分我们照付。」你被挂上了转会名单。`, true)
+  if (r < 0.21) { push('warn', `【enjoy】老板不投钱了，训练赛改成每天两小时。${mate()} 直播比训练时间长。`); out.temp = -8; yield 'step'; return out }
+  if (r < 0.24) { push('warn', `【板凳】教练换体系，这个 Stage 你坐替补席。首发是刚签的 ${mate()}。`, true); out.bench = true; p.benchYears++; yield 'step'; return out }
+  if (r < 0.26) { addFame(meta, -Math.round(p.fame * 0.25)); push('warn', '【脱粉】你直播说了句「这游戏也就这样」，粉丝群一夜掉了四分之一。'); yield 'step'; return out }
+  if (r < 0.28) {
+    push('ban', '【优化】俱乐部签了新人，经理约你谈话：「合同剩下的部分照付。」你被挂上转会名单。', true)
     p.teamId = null
     p.yearScore = 0
     ach(meta, 'pro_cut')
@@ -481,14 +462,14 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.31) { push('career', `【首发】首发 ${mate()} 手伤，你顶上。教练说：「打出来就是你的。」`); out.temp = 4; yield 'step'; return out }
-  if (r < 0.34) {
-    push('ban', `【官方公告】队友 ${mate()} 被查出在预选赛收钱放水。${t.name} 本 Stage 取消资格。`, true)
+  if (r < 0.30) { push('career', `【首发】首发 ${mate()} 手伤，你顶上。教练：「打出来就是你的。」`); out.temp = 4; yield 'step'; return out }
+  if (r < 0.33) {
+    push('ban', `【连坐】队友 ${mate()} 被查出在预选赛收钱放水。${t.name} 本 Stage 取消资格。`, true)
     addFame(meta, -Math.round(p.fame * 0.2))
-    const res: StageResult = { year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, note: '全队取消资格' }
-    p.history.push(res)
+    p.history.push({ year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, note: '全队取消资格' })
     ach(meta, 'pro_teammate_fix')
     if (rand() < 0.2) {
+      yield 'step'
       push('ban', '监察部门认为你知情不报。追加禁赛两个 Stage。', true)
       p.suspended = 2
       addFame(meta, -Math.round(p.fame * 0.3))
@@ -497,10 +478,9 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.36) { push('warn', '【伤病】手腕腱鞘炎复发。医生说这个 Stage 别碰鼠标。', true); out.bench = true; yield 'step'; return out }
-  if (r < 0.38) { push('warn', `【禁赛】你直播口嗨对手，被官方禁赛一场。`); out.temp = -3; yield 'step'; return out }
-  if (r < 0.40) {
-    push('ban', '【丑闻】你的私聊记录被人挂上热搜。俱乐部连夜发公告：「经协商，双方解除合同。」', true)
+  if (r < 0.35) { push('warn', '【伤病】手腕腱鞘炎复发。医生说这个 Stage 别碰鼠标。', true); out.bench = true; yield 'step'; return out }
+  if (r < 0.37) {
+    push('ban', '【丑闻】你的私聊记录被人挂上热搜。俱乐部连夜公告：「经协商，双方解除合同。」', true)
     addFame(meta, -Math.round(p.fame * 0.3))
     deadTeams.add(t.id)
     p.teamId = null
@@ -510,7 +490,7 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.42) {
+  if (r < 0.39) {
     push('ban', `【解散】${t.name} 老板失联，队员在宿舍等了一周。欠薪 ${fm(Math.round(p.salary / 2))} 没了。`, true)
     meta.cash -= Math.round(p.salary / 2)
     deadTeams.add(t.id)
@@ -521,31 +501,23 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     yield 'step'
     return out
   }
-  if (r < 0.47) { const c = irand(5, 20) * 1000; meta.cash += c; p.income += c; push('career', `【赞助】外设品牌个人代言到账 +${fm(c)}。`); yield 'step'; return out }
-  // —— 梗：多数只是文案，少数动一点人气 / 手感 ——
-  if (r < 0.78) {
+  if (r < 0.43) { const c = irand(5, 20) * 1000; meta.cash += c; p.income += c; push('career', `【赞助】外设品牌个人代言到账 +${fm(c)}。`); yield 'step'; return out }
+  // —— 梗：少量，一行 ——
+  if (r < 0.55) {
     const fans = (n: number) => { addFame(meta, n); return `人气 +${fm(n)}。` }
     const memes: Array<() => void> = [
-      () => push('career', `【切片】解说在直播里喊「他不是人，他是神！」切片播放量破百万。${fans(irand(3000, 9000))}`, true),
-      () => push('career', `【表情包】你赛后采访皱眉的一帧被做成了表情包，群里都在用。${fans(irand(1500, 4000))}`),
+      () => push('career', `【切片】解说喊「他不是人，他是神！」切片播放量破百万。${fans(irand(3000, 9000))}`, true),
+      () => push('career', `【表情包】你赛后采访皱眉的一帧被做成了表情包。${fans(irand(1500, 4000))}`),
       () => push('sys', `【热搜】你的 ID 上了热搜第 38 位，评论区第一条：「这谁？」${fans(irand(500, 1500))}`),
-      () => { out.temp = -3; push('warn', `【三英雄选手】解说说你是「三英雄选手」，对面 ban 位从此固定。`) },
-      () => push('warn', `【网吧队】训练赛输给了网吧队。教练把训练室的灯关了半小时，没人说话。`),
+      () => { out.temp = -3; push('warn', '【三英雄选手】解说说你是「三英雄选手」，对面 ban 位从此固定。') },
       () => { const c = irand(3, 12) * 1000; meta.cash += c; p.income += c; push('career', `【带货】休赛期直播带货，卖出 ${irand(30, 400)} 包螺蛳粉。现金 +${fm(c)}。`) },
-      () => push('sys', `【发布会】战队发布会 PPT 把你的 ID 打错了一个字母。官博删了三次。`),
-      () => { out.temp = -4; push('warn', `【拉肚子】决赛日拉肚子。暂停时间你跑了两趟洗手间，回来对面已经换阵了。`) },
-      () => { out.temp = -2; push('warn', `【鼠标】上场前鼠标微动双击，你借了解说的鼠标。DPI 不对，打完才发现。`) },
+      () => { out.temp = -4; push('warn', '【拉肚子】决赛日拉肚子。回来对面已经换阵了。') },
       () => push('career', `【握手】赛后握手，对面 ${mate()} 没伸手。第二天热搜上骂的是他。${fans(irand(1000, 3000))}`),
-      () => { out.temp = 3; push('career', `【推特】对面外援在推特 @ 你：「easy」。这个 Stage 你每一把都在找他。`) },
-      () => push('sys', `【天才少年】一个退役老将在直播里叫你「天才少年」。你 ${p.age} 岁了。`),
-      () => push('sys', `【热身】赛前热身 200 发全中。教练：「别浪费在热身上。」`),
-      () => push('career', `【接机】粉丝接机，灯牌把你的 ID 拼错了。你和灯牌合了影。${fans(irand(300, 900))}`),
+      () => { out.temp = 3; push('career', '【推特】对面外援在推特 @ 你：「easy」。这个 Stage 你每一把都在找他。') },
       () => push('career', `【猴子】你的猴子跳大砸空，解说：「他在测量场地。」切片火了。${fans(irand(2000, 6000))}`, true),
-      () => push('sys', `【道歉】输了之后官博让全队发道歉微博。你复制粘贴了队长的，连错别字一起。`),
-      () => { out.temp = -4; push('warn', `【ban 位】你的本命被 ban 了一整个 Stage。教练：「换手，你不是三英雄选手吗。」`) },
-      () => push('sys', `【电竞椅】战队给每人配了新电竞椅。你打了两天，腰更疼了。`),
-      () => push('career', `【拆家】决胜图最后一波你一个人守住点，对面五个人在你面前走了个来回。解说：「这是地形杀。」${fans(irand(1500, 4000))}`, true),
-      () => push('sys', `【采访】赛后采访问你怎么看对手。你说：「他们也很努力。」被做成了鬼畜。`),
+      () => { out.temp = -4; push('warn', '【ban 位】你的本命被 ban 了一整个 Stage。教练：「换手。」') },
+      () => push('career', `【拆家】决胜图最后一波你一个人守住点。解说：「这是地形杀。」${fans(irand(1500, 4000))}`, true),
+      () => push('sys', '【采访】赛后采访问你怎么看对手。你说：「他们也很努力。」被做成了鬼畜。'),
     ]
     memes[irand(0, memes.length - 1)]()
     yield 'step'
@@ -554,124 +526,125 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
   return out
 }
 
-/** 一个 Stage：预选（合作队 S1 免）→ 循环赛 → 双败 → 国际赛。每个系列赛一步 */
+/** 一场杯赛：一行 */
+function* cup(meta: MetaSave, stage: number, lv: number, you: number): Generator<Tick, boolean, void> {
+  const p = meta.pro
+  const c = CUPS[lv]
+  const name = c.names[irand(0, c.names.length - 1)]
+  levelUp(meta, lv)
+  const semi = series(you, irand(c.opp[0], c.opp[1]), 3)
+  if (!semi.win) {
+    L(meta, 'lose', `S${stage} · 【${PRO_LEVELS[lv]}】${name} · 半决赛 ${semi.score}，${moment(false)}。没拿到晋级名额。`)
+    yield 'step'
+    return false
+  }
+  const fin = series(you, irand(c.opp[0] + 6, c.opp[1] + 6), 3)
+  const prize = fin.win ? irand(c.prize[0], c.prize[1]) : Math.round(c.prize[0] / 2)
+  meta.cash += prize
+  p.income += prize
+  addFame(meta, fin.win ? c.fame : Math.round(c.fame / 3))
+  L(meta, fin.win ? 'win' : 'career', `S${stage} · 【${PRO_LEVELS[lv]}】${name} · 决赛 ${fin.score}，${fin.win ? '夺冠' : '亚军'}，奖金 +${fm(prize)}。晋级。`)
+  yield 'step'
+  return true
+}
+
+/** 一个 Stage：杯赛（底子差的队）→ 预选 → 常规 → 季后 → 国际赛。每一级一行，赛事高度跟着跳 */
 function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolean): Generator<Tick, void, void> {
   const p = meta.pro
   const t = teamOf(p.teamId)!
   const res: StageResult = { year: p.year + 1, stage, team: t.name, place: 0, intl: 0, prize: 0, bench }
   const you = teamStrength(meta, temp) + (bench ? -8 : 0)
-  const say = (cls: string, text: string) => L(meta, cls, text)
+  const say = (cls: string, text: string) => L(meta, cls, `S${stage} · ${text}`)
   const tag = bench ? '（你在替补席）' : ''
+  const rating = teamRating(t)
 
+  // 杯赛：从哪一级开始打，看队伍底子
   let alive = true
-  if (!(t.partner && stage === 1)) {
-    const opps = Array.from({ length: 7 }, () => irand(35, 78))
-    const s1 = series(you, opps[0], 3)
-    say(s1.win ? 'win' : 'lose', `公开预选 · 瑞士轮首轮 · ${map()} ${s1.score}，${moment(s1.win)}。${tag}`)
-    yield 'step'
-    const s2 = series(you, opps[1], 3)
-    say(s2.win ? 'win' : 'lose', `瑞士轮第二轮 · ${map()} ${s2.score}。`)
-    yield 'step'
-    let pl: number
-    const wins = (s1.win ? 1 : 0) + (s2.win ? 1 : 0)
-    if (wins === 2) pl = irand(1, 3)
-    else if (wins === 0) pl = 8
-    else {
-      const s3 = series(you, opps[2], 3)
-      say(s3.win ? 'win' : 'lose', `瑞士轮决胜轮 · ${map()} ${s3.score}，${moment(s3.win)}。`)
-      yield 'step'
-      pl = s3.win ? irand(4, 6) : 7
-    }
-    if (pl <= 6) say('career', `瑞士轮第 ${pl}，晋级常规赛。`)
-    else { alive = false; res.place = pl; say('warn', `瑞士轮第 ${pl}，止步预选。`) }
-    yield 'step'
-  } else {
-    say('sys', '合作战队 Stage 1 免预选，直接进常规赛。')
+  if (!t.partner) {
+    const from = rating < 48 ? 0 : rating < 62 ? 1 : 2
+    for (let lv = from; lv <= 2 && alive; lv++) alive = yield* cup(meta, stage, lv, you)
+  }
+
+  // 预选赛：一行
+  if (alive && !(t.partner && stage === 1)) {
+    levelUp(meta, LV.qualifier)
+    let w = 0
+    for (let i = 0; i < 3; i++) if (series(you, irand(35, 78), 3).win) w++
+    const pl = w === 3 ? irand(1, 2) : w === 2 ? irand(3, 5) : w === 1 ? irand(6, 7) : 8
+    if (pl <= 6) say('career', `【预选赛】瑞士轮 ${w}-${3 - w} · 第 ${pl}，晋级常规赛。${tag}`)
+    else { alive = false; res.place = pl; say('lose', `【预选赛】瑞士轮 ${w}-${3 - w} · 第 ${pl}，止步预选。${tag}`) }
     yield 'step'
   }
 
   if (alive) {
-    const opps = Array.from({ length: 5 }, () => irand(45, 86))
-    const others = TEAMS.filter((x) => x.id !== t.id).sort(() => Math.random() - 0.5)
+    levelUp(meta, LV.regular)
     let rw = 0
-    for (let i = 0; i < 3; i++) {
-      const s = series(you, opps[i], 3)
-      if (s.win) rw++
-      say(s.win ? 'win' : 'lose', `常规赛 · 对阵${others[i].name} · ${map()} ${s.score}，${moment(s.win)}。`)
-      yield 'step'
-    }
+    let best: string | null = null
+    for (let i = 0; i < 5; i++) { const s = series(you, irand(45, 86), 3); if (s.win) { rw++; if (!best) best = moment(true) } }
     ach(meta, 'pro_regular')
-    // 名次跟着展示出来的三场走：3 胜前二，2 胜大多进季后赛，1 胜边缘，0 胜垫底
-    const pl = rw === 3 ? irand(1, 2) : rw === 2 ? irand(2, 4) : rw === 1 ? irand(4, 5) : irand(5, 6)
+    const pl = rw >= 4 ? irand(1, 2) : rw === 3 ? irand(2, 4) : rw === 2 ? irand(4, 5) : irand(5, 6)
     if (pl <= 4) {
-      say('career', `常规赛第 ${pl}，进入四队双败季后赛。`)
+      say('career', `【常规赛】${rw} 胜 ${5 - rw} 负 · 第 ${pl}，进季后赛。${best ?? ''}${tag}`)
       ach(meta, 'pro_playoffs')
       yield 'step'
+      levelUp(meta, LV.playoffs)
       const semi = series(you, irand(60, 92), 5)
-      say(semi.win ? 'win' : 'lose', `季后赛胜者组 · ${map()} ${semi.score}，${moment(semi.win)}。`)
-      yield 'step'
+      let text = `胜者组 ${semi.score}`
       if (semi.win) {
         const final = series(you, irand(68, 95), 5)
-        say(final.win ? 'win' : 'lose', `地区决赛 · ${map()} ${final.score}，${moment(final.win)}。`)
+        text += ` → 决赛 ${final.score}`
         res.place = final.win ? 1 : 2
       } else {
         const lower = series(you, irand(55, 88), 5)
-        say(lower.win ? 'win' : 'lose', `败者组 · ${map()} ${lower.score}。`)
-        yield 'step'
+        text += ` → 败者组 ${lower.score}`
         if (lower.win) {
           const final = series(you, irand(68, 95), 5)
-          say(final.win ? 'win' : 'lose', `败者组决赛 · ${map()} ${final.score}。`)
+          text += ` → 决赛 ${final.score}`
           res.place = final.win ? 2 : 3
         } else res.place = 4
       }
+      res.prize = STAGE_PRIZE[res.place] ?? 0
+      if (bench) res.prize = Math.round(res.prize * 0.4)
+      const place = res.place === 1 ? '冠军' : res.place === 2 ? '亚军' : res.place === 3 ? '季军' : '第四'
+      const l = say(res.place === 1 ? 'ending' : res.place === 2 ? 'win' : 'career', `【季后赛】${text}，${place}${res.prize ? `，奖金 +${fm(res.prize)}` : ''}。${res.place === 1 ? moment(true) + '。' : ''}${tag}`)
+      if (res.place <= 2) H(meta, l)
       yield 'step'
     } else {
       res.place = pl
-      say('sys', `常规赛第 ${pl}，无缘季后赛。`)
+      res.prize = STAGE_PRIZE[pl] ?? 0
+      if (bench) res.prize = Math.round(res.prize * 0.4)
+      say('sys', `【常规赛】${rw} 胜 ${5 - rw} 负 · 第 ${pl}，无缘季后赛。${res.prize ? `奖金 +${fm(res.prize)}。` : ''}${tag}`)
       yield 'step'
     }
   }
 
-  res.prize = STAGE_PRIZE[res.place] ?? 0
-  if (bench) res.prize = Math.round(res.prize * 0.4)
   const fameGain = (res.place === 1 ? 15000 : res.place === 2 ? 8000 : res.place <= 4 && res.place > 0 ? 3000 : 500) * (bench ? 0.3 : 1)
   addFame(meta, fameGain)
   if (res.place === 1) { p.titles.regional++; ach(meta, 'pro_regional_champ'); if (bench) ach(meta, 'pro_bench_champ') }
-  const line = L(meta, res.place === 1 ? 'ending' : 'career', `Stage ${stage} 地区名次 ${res.place || '预选出局'}${res.prize ? `，奖金分成 +${fm(res.prize)}` : ''}。${tag}`)
-  H(meta, line)
-  yield 'step'
 
   if (res.place > 0 && res.place <= 2) {
     const name = INTL_NAME[stage]
-    say('career', `【${name} · ${INTL_PLACE[stage]}】地区前二出线。`)
-    yield 'step'
     if (exposureCheck(meta, '国际赛资格审查')) return
     if (!p.teamId) { say('warn', `队伍带着替补去了${name}。你在家看的直播。`); yield 'step'; return }
+    levelUp(meta, stage === 3 ? LV.worlds : LV.intl)
     const opps = Array.from({ length: 7 }, () => irand(stage === 3 ? 72 : 68, 94))
     const foes = [...OPP].sort(() => Math.random() - 0.5)
     let gw = 0
-    for (let i = 0; i < 2; i++) {
-      const s = series(you, opps[i], 5)
-      if (s.win) gw++
-      say(s.win ? 'win' : 'lose', `${name} 小组赛 · 对阵${foes[i]} · ${map()} ${s.score}，${moment(s.win)}。`)
-      yield 'step'
-    }
+    for (let i = 0; i < 2; i++) if (series(you, opps[i], 5).win) gw++
     let ip: number
-    if (gw === 0) { ip = irand(7, 8); say('sys', `${name} 小组赛出局。`) }
+    let text = `${name} · ${INTL_PLACE[stage]} · 小组 ${gw}-${2 - gw}`
+    if (gw === 0) ip = irand(7, 8)
     else if (gw === 1) {
       const dec = series(you, opps[2], 5)
-      say(dec.win ? 'win' : 'lose', `${name} 小组决胜 · 对阵${foes[2]} · ${map()} ${dec.score}。`)
-      yield 'step'
-      if (!dec.win) { ip = irand(5, 6); say('sys', `${name} 小组赛出局。`) } else ip = 0
+      text += ` · 决胜 ${dec.score}`
+      ip = dec.win ? 0 : irand(5, 6)
     } else ip = 0
     if (ip === 0) {
       const semi = series(you, opps[5], 5)
-      say(semi.win ? 'win' : 'lose', `${name} 半决赛 · 对阵${foes[3]} · ${map()} ${semi.score}，${moment(semi.win)}。`)
-      yield 'step'
+      text += ` · 半决赛 ${semi.score} ${foes[3]}`
       if (semi.win) {
         const fin = series(you, opps[6], 5)
-        say(fin.win ? 'win' : 'lose', `${name} 决赛 · 对阵${foes[4]} · ${map()} ${fin.score}，${moment(fin.win)}。`)
-        yield 'step'
+        text += ` · 决赛 ${fin.score} ${foes[4]}`
         ip = fin.win ? 1 : 2
       } else ip = irand(3, 4)
     }
@@ -685,14 +658,17 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     if (ip === 1) {
       p.titles.world++
       ach(meta, stage === 3 ? 'pro_world_champ' : 'pro_intl_champ')
+      if (stage === 3) levelUp(meta, LV.champion)
     }
-    const il = L(meta, ip <= 2 ? 'ending' : 'career', `${name} 最终名次 ${ip}${ipz ? `，奖金 +${fm(ipz)}` : ''}。`)
+    const place = ip === 1 ? (stage === 3 ? '世界冠军！' : '冠军！') : ip === 2 ? '亚军' : ip <= 4 ? '四强' : ip <= 6 ? '八强' : '小组出局'
+    const il = say(ip <= 2 ? 'ending' : ip <= 4 ? 'win' : 'career', `【${stage === 3 ? '总决赛' : '国际赛'}】${text}，${place}${ipz ? `，奖金 +${fm(ipz)}` : ''}。${tag}`)
     H(meta, il)
     yield 'step'
     // FMVP：世界总决赛冠军且状态在线以上才有资格摇
     if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0) * (p.hidden === 'clutch' ? 2 : 1)) {
       p.titles.fmvp++
       addFame(meta, 150000)
+      levelUp(meta, LV.fmvp)
       const fl = L(meta, 'ending', '【FMVP】颁奖台的灯打在你一个人身上。')
       H(meta, fl)
       ach(meta, 'pro_fmvp')
@@ -705,6 +681,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
   p.history.push(res)
   p.yearScore += Math.max(0, 9 - (res.place || 9)) + (res.intl ? Math.max(0, 9 - res.intl) : 0)
 }
+
 
 /* ———————————— 年末 ———————————— */
 

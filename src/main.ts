@@ -2,7 +2,7 @@ import './style.css'
 import type { HiddenTalent, LifeState, LogLine, RankState, TalentTier } from './types'
 import {
   ACH_PERKS, DEFAULT_SPEED, FORM_INFO, FORM_ORDER, HIDDEN_INFO, INTL_NAME, MAJOR_NAME, MIN_SPEED, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
-  STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, topPlace,
+  PRO_LEVELS, PRO_LEVEL_CLASS, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { levelNeed, talentProbs } from './data/talent'
@@ -16,6 +16,23 @@ const DEBUG = new URLSearchParams(location.search).has('debug')
 const meta = loadMeta()
 if (typeof meta.speed !== 'number') meta.speed = DEFAULT_SPEED
 if (typeof meta.manual !== 'boolean') meta.manual = false
+
+/* ———————————— 外观主题 ———————————— */
+const THEMES = [
+  { id: 'dossier', name: '档案', desc: '黑曜石 · 古铜 · 宋体（默认）' },
+  { id: 'arena', name: '赛场', desc: '深蓝黑 · 亮橙 · 粗黑体切角，转播包装味' },
+  { id: 'paper', name: '报纸', desc: '米白纸 · 墨字 · 红章，亮色' },
+  { id: 'terminal', name: '终端', desc: '黑底荧光绿 · 等宽 · 一切从简' },
+  { id: 'neon', name: '霓虹', desc: '深紫 · 品红 + 青光 · 发光描边' },
+]
+function currentTheme() {
+  const q = new URLSearchParams(location.search).get('theme')
+  return (q && THEMES.some((t) => t.id === q)) ? q : (meta.theme ?? 'dossier')
+}
+function applyTheme() {
+  document.documentElement.dataset.theme = currentTheme()
+}
+applyTheme()
 
 let life: LifeState | null = null
 let timer: number | null = null
@@ -424,7 +441,7 @@ function renderLifeSettle() {
     ${commitResult ? expCard(commitResult.exp, commitResult.ups) : ''}
     <div class="section" style="padding-bottom:6px">
       ${toPro
-        ? '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯 · 一路滚到退役</button>'
+        ? '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯</button>'
         : '<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>'}
       <button class="btn" id="home">回首页</button>
     </div>
@@ -505,7 +522,7 @@ function renderPro() {
       <div class="section">
         <p class="tip" style="color:var(--bone)">${titles}${p.suspended ? ` · <span class="ban">禁赛剩 ${p.suspended} 个 Stage</span>` : ''}</p>
         <p class="tip" style="margin-top:6px">背调档案：${dirtyText}</p>
-        <button class="btn btn-primary" id="btn-year" style="margin-top:12px">${p.year === 0 ? '开始职业生涯 · 一路滚到退役' : `从第 ${p.year + 1} 年继续 · 一路滚到退役`}</button>
+        <button class="btn btn-primary" id="btn-year" style="margin-top:12px">${p.year === 0 ? '开始职业生涯' : `从第 ${p.year + 1} 年继续`}</button>
         ${p.year > 0 ? '<button class="btn btn-danger" id="btn-retire">现在退役</button>' : ''}
       </div>
       ${formBar(proAge(p))}
@@ -534,7 +551,18 @@ function proHud() {
   const set = (id: string, html: string) => { const el = $(id); if (el) el.innerHTML = html }
   const t = teamOf(p.teamId)
   set('pro-title', `${t ? t.name : '自由人'}`)
-  set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁</span><span>${p.stageAt ? `Stage <span class="num">${p.stageAt}</span> / 3` : '年初'}</span><span>${formBadge(p.form)} 实力 <span class="num">${p.skill}</span></span>`)
+  set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁</span><span>${p.stageAt ? `Stage <span class="num">${p.stageAt}</span> / 3` : '年初'}</span><span>峰值 <span class="${PRO_LEVEL_CLASS[p.peakLevel]}">${PRO_LEVELS[p.peakLevel]}</span></span>`)
+  const lvEl = $('pro-level')
+  if (lvEl) {
+    const html = `<span class="${PRO_LEVEL_CLASS[p.level]}"><span class="cn">${PRO_LEVELS[p.level]}</span></span>`
+    if (lvEl.innerHTML !== html) {
+      lvEl.innerHTML = html
+      lvEl.classList.remove('bump')
+      void lvEl.offsetWidth
+      lvEl.classList.add('bump')
+    }
+  }
+  set('pro-form', `${formBadge(p.form)}&nbsp;&nbsp;<span class="tip">实力 <span class="num">${p.skill}</span>${t ? ` · ${t.partner ? '合作战队' : '普通队'} · 底子 ${teamRating(t)}` : ''}</span>`)
   set('pro-res', `<span>现金 <b class="num ${meta.cash < 0 ? 'lose' : ''}">${fmt(meta.cash)}</b></span><span>人气 <b class="num">${fmt(p.fame)}</b></span><span>冠军 <b class="num">${p.titles.regional}</b></span><span>国际赛 <b class="num">${p.titles.intl}</b></span>${p.titles.fmvp ? `<span>FMVP <b class="num">${p.titles.fmvp}</b></span>` : ''}${p.suspended ? `<span class="ban">禁赛 ${p.suspended}</span>` : ''}`)
   const bar = $('pro-bar')
   if (bar) bar.style.width = `${(p.stageAt / 3) * 100}%`
@@ -555,9 +583,11 @@ function startProRun() {
       <div class="actions"><button class="btn btn-sm" id="btn-pro-pause">暂停</button></div>
     </div>
     <div class="stat" id="pro-meta"></div>
-    <div class="stat" id="pro-res" style="margin-top:6px"></div>
+    <div class="rank-hero" id="pro-level"></div>
+    <div id="pro-form" style="margin:4px 0 10px"></div>
+    <div class="stat" id="pro-res"></div>
     <div class="bar"><i id="pro-bar" style="width:0%"></i></div>
-    <div class="tip" style="margin-bottom:16px">OWCS 中国赛区 · ${p.year === 0 ? '新人' : `第 ${p.year + 1} 年起`} · 签约到退役一路滚完${meta.manual ? ' · 点赛程推进' : ''}</div>
+    <div class="tip" style="margin-bottom:16px">OWCS 中国赛区${meta.manual ? ' · 点赛程推进' : ''}</div>
     <div class="log-cols">
       <div class="log-col"><div class="label">赛程</div><div class="log-box" id="pro-log"></div></div>
       <div class="log-col"><div class="label">高光</div><div class="log-box" id="pro-hl"></div></div>
@@ -580,7 +610,7 @@ function startProRun() {
   $('btn-pro-ff')!.onclick = () => { fastForward = !fastForward; resumePro() }
   $('btn-pro-exit')!.onclick = () => { stopProTimer(); Object.assign(meta, loadMeta()); renderPro() }
   if (meta.manual) $('pro-log')!.onclick = () => { if (!proPaused) tickPro() }
-  else proTimer = window.setTimeout(tickPro, intervalMs() * 3)
+  else proTimer = window.setTimeout(tickPro, intervalMs() * 3.2)
   mountDebug()
 }
 
@@ -598,10 +628,8 @@ function tickPro() {
   // 滚过一年就落盘一次：刷新只丢当前这一年
   if (meta.pro.year !== proSavedYear) { proSavedYear = meta.pro.year; writeMeta(meta) }
   if (r === 'done') { stopProTimer(); proTimer = window.setTimeout(renderProSettle, 1200); return }
-  // 比分行快一点，事件 / 公告慢一点，整段生涯两三分钟滚完
-  const last = meta.pro.log[meta.pro.log.length - 1]
-  const mult = fastForward ? 1 : last && (last.cls === 'win' || last.cls === 'lose') ? 1.4 : 2.6
-  if (!meta.manual) proTimer = window.setTimeout(tickPro, intervalMs() * mult)
+  // 比主玩法慢一档：一行就是一级赛事
+  if (!meta.manual) proTimer = window.setTimeout(tickPro, fastForward ? intervalMs() : intervalMs() * 3.2)
 }
 
 /** 生涯结算：一辈子的职业路走完了 */
@@ -671,7 +699,7 @@ function renderAbout() {
     </div>
     <div class="section">
       <div class="label">被发掘</div>
-      <p class="tip" style="color:var(--bone)">${SCOUT_MAX_AGE} 岁前打到宗师以上，有概率收到青训教练的私信。试训前有背调，账号干净才好过。通过就单开一段职业生涯：OWCS 中国赛区，从签约一路滚到退役，签约、转会、板凳、审查、热搜全是事件，不用你点。</p>
+      <p class="tip" style="color:var(--bone)">${SCOUT_MAX_AGE} 岁前打到宗师以上，有概率收到青训教练的私信。试训前有背调，账号干净才好过。通过就单开一段职业生涯：OWCS 中国赛区，从网吧赛打到世界总决赛，签约、转会、板凳、审查、热搜全是事件，不用你点。</p>
     </div>
     <div class="section">
       <div class="label">黑市</div>
@@ -690,14 +718,28 @@ function renderAbout() {
 }
 
 function settingsBody() {
+  const themes = THEMES.map((t) => `<button class="${t.id === currentTheme() ? 'on' : ''}" data-theme-pick="${t.id}" title="${t.desc}">${t.name}</button>`).join('')
   return `
     <label class="row"><span class="k">手动模式（点日志推进一季 / 一场）</span><input type="checkbox" id="set-manual" ${meta.manual ? 'checked' : ''}></label>
     <div class="row" style="border-bottom:0"><span class="k">基础间隔</span><span class="v num" id="speed-val">${meta.speed}s</span></div>
     <input type="range" id="set-speed" min="${MIN_SPEED}" max="1" step="0.01" value="${meta.speed}">
+    <div class="row" style="border-bottom:0;padding-top:14px"><span class="k">外观</span><span class="v tip" id="theme-desc">${THEMES.find((t) => t.id === currentTheme())?.desc ?? ''}</span></div>
+    <div class="seg" id="theme-seg" style="margin-top:6px;flex-wrap:wrap">${themes}</div>
   `
 }
 
 function bindSpeed() {
+  $('theme-seg')?.querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
+    b.onclick = () => {
+      meta.theme = b.dataset.themePick
+      const u = new URL(location.href)
+      if (u.searchParams.has('theme')) { u.searchParams.delete('theme'); history.replaceState(null, '', u.toString()) }
+      applyTheme()
+      writeMeta(meta)
+      $('theme-seg')!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b))
+      $('theme-desc')!.textContent = THEMES.find((t) => t.id === meta.theme)?.desc ?? ''
+    }
+  })
   $('set-manual')!.onchange = (e) => { meta.manual = (e.target as HTMLInputElement).checked; writeMeta(meta) }
   const range = $('set-speed') as HTMLInputElement
   range.oninput = () => {

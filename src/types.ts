@@ -253,6 +253,10 @@ export interface ProState {
   yearDone: boolean
   /** 本年内 Stage 进度 1–3，0 = 年初 */
   stageAt: number
+  /** 今年打到的赛事高度（PRO_LEVELS 下标），年初归零 */
+  level: number
+  /** 生涯最高赛事高度 */
+  peakLevel: number
   /** 历史结局收集 */
   endings: Record<string, number>
 }
@@ -266,6 +270,8 @@ export interface MetaSave {
   lastEndingId?: string
   speed: number
   manual: boolean
+  /** 视觉主题 id（见 THEMES） */
+  theme?: string
 
   growth: Growth
   /** 历史天赋记录（各档次数） */

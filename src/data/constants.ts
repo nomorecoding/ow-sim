@@ -225,6 +225,17 @@ export const INTL_MULT: Record<1 | 2 | 3, number> = { 1: 0.6, 2: 1.2, 3: 1.5 }
 export const INTL_NAME: Record<1 | 2 | 3, string> = { 1: 'Champions Clash', 2: '年中冠军赛 · EWC', 3: '世界总决赛' }
 export const INTL_PLACE: Record<1 | 2 | 3, string> = { 1: '首尔', 2: '利雅得', 3: '斯德哥尔摩' }
 
+/** 赛事高度：职业页的「段位」。颜色借段位色，一格一格往上跳 */
+export const PRO_LEVELS = ['网吧赛', '社区赛', '城市赛', '预选赛', '常规赛', '季后赛', '国际赛', '总决赛', '世界冠军', 'FMVP'] as const
+export const PRO_LEVEL_CLASS: string[] = MAJOR_ORDER.map((m) => RANK_COLOR_CLASS[m])
+export const LV = { netbar: 0, community: 1, city: 2, qualifier: 3, regular: 4, playoffs: 5, intl: 6, worlds: 7, champion: 8, fmvp: 9 } as const
+/** 杯赛（低底子的队要先从这儿打出来）：名字、对手底子区间、奖金区间 */
+export const CUPS: Array<{ lv: number; names: string[]; opp: [number, number]; prize: [number, number]; fame: number }> = [
+  { lv: 0, names: ['网鱼杯', '网咖联赛', '街电杯'], opp: [24, 46], prize: [500, 2000], fame: 200 },
+  { lv: 1, names: ['薯条杯', '铁锤杯', '守望者杯'], opp: [34, 58], prize: [2000, 6000], fame: 800 },
+  { lv: 2, names: ['成都站', '上海站', '广州站', '西安站', '武汉站'], opp: [44, 68], prize: [5000, 15000], fame: 2000 },
+]
+
 /** 职业模式：可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
 export const PRO_RETIRE_MIN_AGE = 22
 export const PRO_DECLINE_AGE = 25
