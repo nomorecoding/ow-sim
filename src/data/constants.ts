@@ -268,40 +268,40 @@ export const LATE_PASSION_YEAR = 130
  * 中国天花板 Weibo Gaming；国际前四档参考 Midseason：ZETA / Twisted Minds / T1 / WBG 等。
  */
 export const TEAMS: Team[] = [
-  // —— 虚构草根 ——
+  // —— 虚构草根（无官方标，自绘 SVG）——
   { id: 'netbar', name: '网吧一队', short: '网吧', partner: false, rating: 36, tier: 'amateur', region: 'cn', logo: 'netbar.svg' },
   { id: 'college', name: '高校社联', short: '高校', partner: false, rating: 44, tier: 'amateur', region: 'cn', logo: 'college.svg' },
   { id: 'street', name: '街电青年', short: '街电', partner: false, rating: 50, tier: 'amateur', region: 'cn', logo: 'street.svg' },
   { id: 'village', name: '花村游击', short: '花村', partner: false, rating: 56, tier: 'amateur', region: 'cn', logo: 'village.svg' },
-  // —— 中国预选 / 常规赛中下游（OWCS CN；队徽自 Liquipedia）——
-  { id: 'rtz', name: 'ReturnZ', short: 'RTZ', partner: false, rating: 62, tier: 'cn_q', region: 'cn', logo: 'rtz.svg' },
-  { id: 'kk', name: 'Kitsune Kage', short: 'KK', partner: false, rating: 64, tier: 'cn_q', region: 'cn', logo: 'kk.svg' },
-  { id: 'homie', name: 'Homie E', short: 'Homie', partner: false, rating: 68, tier: 'cn_q', region: 'cn', logo: 'homie.svg' },
-  { id: 'milktea', name: 'Milk Tea', short: 'MT', partner: false, rating: 69, tier: 'cn_mid', region: 'cn', logo: 'milktea.svg' },
-  { id: 'hng', name: 'HUNENG Gaming', short: 'HNG', partner: false, rating: 70, tier: 'cn_mid', region: 'cn', logo: 'hng.svg' },
-  { id: 'fam', name: 'Four Angry Men', short: '4AM', partner: false, rating: 72, tier: 'cn_mid', region: 'cn', logo: 'fam.svg' },
-  { id: 'sv', name: 'Solus Victorem', short: 'SV', partner: true, rating: 76, tier: 'cn_mid', region: 'cn', logo: 'sv.svg' },
-  { id: 'ag', name: 'All Gamers', short: 'AG', partner: true, rating: 80, tier: 'cn_mid', region: 'cn', logo: 'ag.svg' },
+  // —— 中国预选 / 常规赛中下游（OWCS CN；队徽 PNG）——
+  { id: 'rtz', name: 'ReturnZ', short: 'RTZ', partner: false, rating: 62, tier: 'cn_q', region: 'cn', logo: 'rtz.png' },
+  { id: 'kk', name: 'Kitsune Kage', short: 'KK', partner: false, rating: 64, tier: 'cn_q', region: 'cn', logo: 'kk.png' },
+  { id: 'homie', name: 'Homie E', short: 'Homie', partner: false, rating: 68, tier: 'cn_q', region: 'cn', logo: 'homie.png' },
+  { id: 'milktea', name: 'Milk Tea', short: 'MT', partner: false, rating: 69, tier: 'cn_mid', region: 'cn', logo: 'milktea.png' },
+  { id: 'hng', name: 'HUNENG Gaming', short: 'HNG', partner: false, rating: 70, tier: 'cn_mid', region: 'cn', logo: 'hng.png' },
+  { id: 'fam', name: 'Four Angry Men', short: '4AM', partner: false, rating: 72, tier: 'cn_mid', region: 'cn', logo: 'fam.png' },
+  { id: 'sv', name: 'Solus Victorem', short: 'SV', partner: true, rating: 76, tier: 'cn_mid', region: 'cn', logo: 'sv.png' },
+  { id: 'ag', name: 'All Gamers', short: 'AG', partner: true, rating: 80, tier: 'cn_mid', region: 'cn', logo: 'ag.png' },
   // —— 中国天花板 ——
-  { id: 'jdg', name: 'JD Gaming', short: 'JDG', partner: true, rating: 88, tier: 'cn_top', region: 'cn', logo: 'jdg.svg' },
-  { id: 'wbg', name: 'Weibo Gaming', short: 'WBG', partner: true, rating: 92, tier: 'cn_top', region: 'cn', logo: 'wbg.svg' },
+  { id: 'jdg', name: 'JD Gaming', short: 'JDG', partner: true, rating: 88, tier: 'cn_top', region: 'cn', logo: 'jdg.png' },
+  { id: 'wbg', name: 'Weibo Gaming', short: 'WBG', partner: true, rating: 92, tier: 'cn_top', region: 'cn', logo: 'wbg.png' },
   // —— 国际 13–16 ——
-  { id: 'liquid', name: 'Team Liquid', short: 'TL', partner: false, rating: 78, tier: 'world_c', region: 'na', logo: 'liquid.svg' },
-  { id: 'secret', name: 'Team Secret', short: 'TS', partner: false, rating: 77, tier: 'world_c', region: 'emea', logo: 'secret.svg' },
-  { id: 'ninez', name: '9z Team', short: '9Z', partner: false, rating: 76, tier: 'world_c', region: 'latam', logo: 'ninez.svg' },
+  { id: 'liquid', name: 'Team Liquid', short: 'TL', partner: false, rating: 78, tier: 'world_c', region: 'na', logo: 'liquid.png' },
+  { id: 'secret', name: 'Team Secret', short: 'TS', partner: false, rating: 77, tier: 'world_c', region: 'emea', logo: 'secret.png' },
+  { id: 'ninez', name: '9z Team', short: '9Z', partner: false, rating: 76, tier: 'world_c', region: 'latam', logo: 'ninez.png' },
   // —— 国际 9–12 ——
-  { id: 'vp', name: 'Virtus.pro', short: 'VP', partner: false, rating: 84, tier: 'world_b', region: 'emea', logo: 'vp.svg' },
-  { id: 'falcons', name: 'Team Falcons', short: 'FAL', partner: false, rating: 86, tier: 'world_b', region: 'emea', logo: 'falcons.svg' },
-  { id: 'varrel', name: 'VARREL', short: 'VAR', partner: false, rating: 83, tier: 'world_b', region: 'jp', logo: 'varrel.svg' },
+  { id: 'vp', name: 'Virtus.pro', short: 'VP', partner: false, rating: 84, tier: 'world_b', region: 'emea', logo: 'vp.png' },
+  { id: 'falcons', name: 'Team Falcons', short: 'FAL', partner: false, rating: 86, tier: 'world_b', region: 'emea', logo: 'falcons.png' },
+  { id: 'varrel', name: 'VARREL', short: 'VAR', partner: false, rating: 83, tier: 'world_b', region: 'jp', logo: 'varrel.png' },
   // —— 国际 5–8 ——
-  { id: 'cr', name: 'Crazy Raccoon', short: 'CR', partner: false, rating: 90, tier: 'world_a', region: 'kr', logo: 'cr.svg' },
-  { id: 'dallas', name: 'Dallas Fuel', short: 'DAL', partner: false, rating: 88, tier: 'world_a', region: 'na', logo: 'dallas.svg' },
-  { id: 'ssg', name: 'Spacestation Gaming', short: 'SSG', partner: false, rating: 87, tier: 'world_a', region: 'na', logo: 'ssg.svg' },
-  { id: 'geekay', name: 'Geekay Esports', short: 'GK', partner: false, rating: 85, tier: 'world_a', region: 'emea', logo: 'geekay.svg' },
+  { id: 'cr', name: 'Crazy Raccoon', short: 'CR', partner: false, rating: 90, tier: 'world_a', region: 'kr', logo: 'cr.png' },
+  { id: 'dallas', name: 'Dallas Fuel', short: 'DAL', partner: false, rating: 88, tier: 'world_a', region: 'na', logo: 'dallas.png' },
+  { id: 'ssg', name: 'Spacestation Gaming', short: 'SSG', partner: false, rating: 87, tier: 'world_a', region: 'na', logo: 'ssg.png' },
+  { id: 'geekay', name: 'Geekay Esports', short: 'GK', partner: false, rating: 85, tier: 'world_a', region: 'emea', logo: 'geekay.png' },
   // —— 国际前四（天花板）——
-  { id: 'zeta', name: 'ZETA DIVISION', short: 'ZETA', partner: false, rating: 96, tier: 'world_s', region: 'jp', logo: 'zeta.svg' },
-  { id: 'tm', name: 'Twisted Minds', short: 'TM', partner: false, rating: 94, tier: 'world_s', region: 'emea', logo: 'tm.svg' },
-  { id: 't1', name: 'T1', short: 'T1', partner: false, rating: 95, tier: 'world_s', region: 'kr', logo: 't1.svg' },
+  { id: 'zeta', name: 'ZETA DIVISION', short: 'ZETA', partner: false, rating: 96, tier: 'world_s', region: 'jp', logo: 'zeta.png' },
+  { id: 'tm', name: 'Twisted Minds', short: 'TM', partner: false, rating: 94, tier: 'world_s', region: 'emea', logo: 'tm.png' },
+  { id: 't1', name: 'T1', short: 'T1', partner: false, rating: 95, tier: 'world_s', region: 'kr', logo: 't1.png' },
 ]
 
 /** 年薪：按档位；外援合同再乘一截 */

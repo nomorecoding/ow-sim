@@ -1048,3 +1048,102 @@ label.row { cursor: pointer; }
 [data-theme="paper"] .rank-champ { color: #b5651d; text-shadow: none; } [data-theme="paper"] .rank-top { color: #a8281c; text-shadow: none; }
 [data-theme="paper"] .redbox-id, [data-theme="paper"] .mute-line { border-color: var(--brass); }
 [data-theme="paper"] input[type="range"], [data-theme="paper"] input[type="checkbox"] { accent-color: var(--brass); }
+
+/* ———— 分享：精简结算卡 ———— */
+.share-sheet {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.22s;
+}
+.share-sheet.show { opacity: 1; pointer-events: auto; }
+.share-backdrop {
+  position: absolute; inset: 0; background: rgba(6, 6, 8, 0.72); backdrop-filter: blur(6px);
+}
+.share-panel {
+  position: relative; width: min(440px, 100%);
+  max-height: min(94vh, 920px);
+  display: flex; flex-direction: column;
+  background: var(--ink-2); border-top: 1px solid var(--hair-2);
+  padding: 14px 14px 18px;
+  transform: translateY(18px); transition: transform 0.28s cubic-bezier(.2,.8,.2,1);
+}
+.share-sheet.show .share-panel { transform: none; }
+.share-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex: 0 0 auto;
+}
+.share-head b {
+  font-family: var(--display); letter-spacing: 0.18em; font-weight: 500; color: var(--bone);
+}
+.share-x {
+  background: transparent; border: 0; color: var(--bone-dim); font-size: 1.4rem;
+  line-height: 1; cursor: pointer; padding: 4px 8px;
+}
+.share-x:hover { color: var(--brass); }
+.share-scroll {
+  flex: 1 1 auto; overflow-y: auto; margin-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.share-card {
+  position: relative; overflow: hidden;
+  padding: 28px 22px 24px;
+  background: var(--ink);
+  border: 1px solid var(--hair-2);
+  min-height: 360px;
+}
+.share-card.dark {
+  background:
+    radial-gradient(90% 50% at 50% 0%, rgba(160, 40, 40, 0.18), transparent 55%),
+    var(--ink);
+  border-color: rgba(196, 90, 90, 0.35);
+}
+.share-brand {
+  text-align: center; font-family: var(--display);
+  letter-spacing: 0.36em; color: var(--brass); font-size: 0.92rem; margin-bottom: 4px;
+}
+.share-card.dark .share-brand { color: #e09898; }
+.share-note {
+  text-align: center; color: var(--bone-faint); font-size: 0.68rem;
+  letter-spacing: 0.2em; margin-bottom: 14px;
+}
+.share-sub { text-align: center; margin: 0 0 6px; }
+.share-hero { text-align: center; font-size: 2.2rem; margin: 4px 0 12px; }
+.share-stat { justify-content: center; margin: 0 0 8px; flex-wrap: wrap; }
+.share-card .ending-card { border-top: 1px solid var(--hair); margin-top: 8px; }
+.share-qr-wrap { text-align: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hair); }
+.share-qr {
+  display: inline-block; width: 148px; height: 148px;
+  border: 6px solid var(--bone); border-radius: 4px; background: var(--bone);
+}
+.share-qr-cap {
+  margin-top: 10px; font-family: var(--display); letter-spacing: 0.24em;
+  color: var(--bone); font-size: 0.86rem;
+}
+.share-qr-url { margin-top: 4px; color: var(--bone-faint); font-size: 0.66rem; letter-spacing: 0.04em; }
+.share-loading, .share-err {
+  color: var(--bone-dim); font-size: 0.8rem; letter-spacing: 0.08em;
+  padding: 48px 24px; text-align: center;
+}
+.share-err { color: var(--clay); }
+.share-actions { flex: 0 0 auto; display: flex; flex-direction: column; }
+.share-tip {
+  margin: 6px 0 0; text-align: center;
+  color: var(--bone-faint); font-size: 0.68rem; letter-spacing: 0.06em;
+}
+
+/* 外挂 / 永封：左上斜红 BAN */
+.share-ban {
+  position: absolute; z-index: 2;
+  top: 36px; left: -8px;
+  padding: 6px 28px;
+  border: 3px solid #d42a2a;
+  color: #d42a2a;
+  font-family: Impact, "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 1.55rem; font-weight: 900; letter-spacing: 0.18em;
+  line-height: 1; transform: rotate(-28deg);
+  background: rgba(40, 8, 8, 0.35);
+  box-shadow: 0 0 0 1px rgba(212, 42, 42, 0.25);
+  pointer-events: none; user-select: none;
+  opacity: 0.92;
+}
+.share-card.banned { padding-top: 36px; }

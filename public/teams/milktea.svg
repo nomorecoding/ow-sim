@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="6" fill="#1a1210"/>
-  <path d="M0 52h64v12H0z" fill="#8a5a2a"/>
-  <text x="32" y="30" text-anchor="middle" dominant-baseline="central" font-family="Arial Black, Helvetica, sans-serif" font-size="16" font-weight="800" fill="#e8b86a" letter-spacing="-0.5">MT</text>
-</svg>

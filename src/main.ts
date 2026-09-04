@@ -9,12 +9,11 @@ import { levelNeed, talentProbs, talentShift } from './data/talent'
 import { achCount, beginLife, chooseDark, clearAllSaves, commitLife, createLife, currentShift, freshMeta, hardResetMeta, lifeStep, loadMeta, writeMeta } from './sim/life'
 import { clamp, scoreToRank } from './sim/rank'
 import { beginCareerRun, careerInProgress, exposureP, proStep, retireNow, teamOf, teamRating } from './sim/pro'
-
-import { teamLogoDataUri } from './data/teamLogos'
+import { openShareSheet, type SharePoster } from './share'
 
 const fmt = (n: number) => n.toLocaleString()
 const DEBUG = new URLSearchParams(location.search).has('debug')
-const teamLogoUrl = (file: string) => teamLogoDataUri(file) ?? `${import.meta.env.BASE_URL}teams/${file}`
+const teamLogoUrl = (file: string) => `${import.meta.env.BASE_URL}teams/${file}`
 
 /** 队名徽章：logo + 队名，边框按档位越来越炫；外援挂角标 */
 function teamBadge(t: Team | null) {
@@ -113,6 +112,11 @@ function rankHtml(r: RankState) {
 function rankInline(r: RankState) {
   if (r.major === 'top') return `<span class="${RANK_COLOR_CLASS[r.major]}">${MAJOR_NAME[r.major]} · 第 ${topPlace(r.rp)} 名</span>`
   return `<span class="${RANK_COLOR_CLASS[r.major]}">${MAJOR_NAME[r.major]}${r.div} · ${r.rp}</span>`
+}
+
+function rankPlain(r: RankState) {
+  if (r.major === 'top') return `${MAJOR_NAME[r.major]} · 第 ${topPlace(r.rp)} 名`
+  return `${MAJOR_NAME[r.major]}${r.div} · ${r.rp}`
 }
 
 function talentBadge(t: TalentTier, hidden: HiddenTalent | null = null) {
@@ -287,6 +291,89 @@ function bindDarkBtn() {
 /** 结算页主操作：左边堕入黑暗（次要），右边再来一辈子（主按钮） */
 function settleAgainRow(againHtml: string) {
   return `<div class="settle-main">${darkBtnHtml()}${againHtml}</div>`
+}
+
+function shareBtnHtml() {
+  return '<button type="button" class="btn" id="btn-share">分享本局</button>'
+}
+
+function lifeSharePoster(g: LifeState, toPro: boolean): SharePoster {
+  const peak = scoreToRank(g.peakScore)
+  const real = scoreToRank(g.peakMmr)
+  const years = g.age - START_AGE
+  const isDark = !!g.darkPath
+  const banned = !!(g.banned || g.ending?.id === 'dark_scorn' || g.achLocked)
+  const darkTitle = g.ending?.title ?? (banned ? '万人唾弃' : '黑暗线退坑')
+  let heroHtml: string
+  let sub: string
+  if (isDark) {
+    sub = `黑暗线 · ${g.age} 岁${banned ? ' · 永封' : ''}`
+    heroHtml = `<span class="ban">${darkTitle}</span>`
+  } else if (toPro) {
+    sub = `试训通过 · ${g.age} 岁`
+    heroHtml = `<span class="career">进入职业生涯</span>`
+  } else {
+    sub = `${START_AGE} → ${g.age} 岁 · 打了 ${years} 年 · ${g.banned ? '永封' : '退坑'}`
+    heroHtml = rankHtml(peak)
+  }
+  const stats = [
+    talentBadge(g.talent, g.hidden),
+    `峰值 ${rankInline(peak)}`,
+    `真实 ${rankInline(real)}`,
+    `${g.season} 季 · ${fmt(g.gamesTotal)} 把`,
+  ]
+  if (dirtyN(g)) stats.push(`<span class="ban">黑历史 ${dirtyN(g)}</span>`)
+  return {
+    kind: 'life',
+    note: '天梯人生结算',
+    sub,
+    heroHtml,
+    stats,
+    ending: g.ending
+      ? { title: g.ending.title, tip: g.ending.rankLabel, verses: g.ending.verse }
+      : toPro
+        ? { title: '有人找你', tip: `${g.age} 岁 · ${rankPlain(g.rank)}`, verses: ['教练说：「下周来报到。」天梯到此为止，接下来是 OWCS。'] }
+        : undefined,
+    banned,
+    dark: isDark || banned,
+  }
+}
+
+function proSharePoster(): SharePoster {
+  const p = meta.pro
+  const t = p.titles
+  const cups = [
+    t.world ? `世界冠 ${t.world}` : '',
+    t.fmvp ? `FMVP ${t.fmvp}` : '',
+    t.regional ? `赛区冠 ${t.regional}` : '',
+    t.intl ? `国际 ${t.intl}` : '',
+    t.owwc ? `世界杯 ${t.owwc}` : '',
+    t.worldCup ? `国家队 ${t.worldCup}` : '',
+  ].filter(Boolean)
+  const banned = !!(p.lifetimeBan || p.ending?.id === 'lifetime_ban' || p.ending?.id === 'fix_ruin')
+  const shame = banned || !p.clean
+  const talent = p.talent ? TALENT_INFO[p.talent].name : '职业选手'
+  const title = p.ending?.title ?? '退役'
+  return {
+    kind: 'pro',
+    note: '职业生涯结算',
+    sub: `职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁`,
+    heroHtml: `<span class="${banned ? 'ban' : 'career'}">${title}</span>`,
+    stats: [
+      talent,
+      cups.length ? cups.join(' · ') : '无冠军头衔',
+      `收入 ${fmt(p.income)} · 声望 ${fmt(p.fame)}`,
+    ],
+    ending: p.ending
+      ? { title: p.ending.title, tip: p.ending.rankLabel, verses: p.ending.verse }
+      : undefined,
+    banned,
+    dark: shame,
+  }
+}
+
+function bindShare(poster: SharePoster) {
+  $('btn-share')?.addEventListener('click', () => { void openShareSheet(poster) })
 }
 
 /** 黑暗线 / 职业脏档时给整页加一圈微红光 */
@@ -1009,6 +1096,7 @@ function renderLifeSettle() {
       ${!toPro
         ? settleAgainRow('<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>')
         : '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯</button>'}
+      ${shareBtnHtml()}
       <button class="btn" id="home">回首页</button>
     </div>
     ${commitResult ? expCard(commitResult.exp, commitResult.ups, commitAchBefore) : ''}
@@ -1038,6 +1126,7 @@ function renderLifeSettle() {
   animateStacks()
   $('again')?.addEventListener('click', startLife)
   bindDarkBtn()
+  bindShare(lifeSharePoster(g, toPro))
   $('go-pro')?.addEventListener('click', () => { life = null; startProRun() })
   $('home')!.onclick = () => { life = null; renderHome() }
   mountDebug()
@@ -1236,6 +1325,7 @@ function renderProSettle() {
     ${shame ? endingCard : ''}
     <div class="btn-row settle-next">
       ${settleAgainRow('<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>')}
+      ${shareBtnHtml()}
       <button class="btn" id="home">回首页</button>
     </div>
     <div class="rule-brass"></div>
@@ -1251,6 +1341,7 @@ function renderProSettle() {
   animateStacks()
   $('again')?.addEventListener('click', startLife)
   bindDarkBtn()
+  bindShare(proSharePoster())
   $('home')!.onclick = renderHome
   mountDebug()
 }

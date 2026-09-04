@@ -387,13 +387,20 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
     if (tierIdx(t.tier) < floor) continue
     if (!canOffer(meta, t)) continue
     const need = teamRating(t) - 8
-    let pr = t.partner ? clamp((value - need) / 40 + 0.1, 0, 0.55) : clamp((value - need) / 30 + 0.18, 0.02, 0.7)
+    // 合作队门槛略松：二线待久了要能摸到 JDG/WBG
+    let pr = t.partner
+      ? clamp((value - need) / 34 + 0.14, 0.03, 0.62)
+      : clamp((value - need) / 30 + 0.18, 0.02, 0.7)
     if (t.partner) pr *= perks(meta).has('offers') ? 1.4 : 1
     if (t.region !== 'cn') pr *= 0.55
     if (t.tier === 'world_s') pr *= 0.55
-    // 同队待久了：外队报价更容易出现（尤其同档 / 更高档）
-    if (window && tenure >= 2) pr *= 1.25 + Math.min(0.5, (tenure - 1) * 0.15)
-    if (window && cur && tierIdx(t.tier) > tierIdx(cur.tier)) pr *= 1.2
+    // 同队待久了：外队报价更容易（尤其升档）
+    if (window && tenure >= 2) pr *= 1.35 + Math.min(0.55, (tenure - 1) * 0.2)
+    if (window && cur && tierIdx(t.tier) > tierIdx(cur.tier)) {
+      pr *= 1.35
+      // 卡在国中（AG/SV 等）时，一线报价再抬一截
+      if (cur.tier === 'cn_mid' && t.tier === 'cn_top') pr *= 1.45
+    }
     if (rand() < pr) {
       const bench = p.skill < teamRating(t) - 8 || (p.skill < teamRating(t) + 2 && rand() < 0.35)
       const [a, b] = salaryRange(t, bench)
@@ -402,8 +409,8 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
     }
   }
   const needScore = (cur?.partner ? 14 : 10) + Math.max(0, p.age - 26) * 2
-  // 待得越久，续约越不稳：第 3 年起逐年掉续约率
-  const renewP = tenure <= 1 ? 1 : tenure === 2 ? 0.7 : Math.max(0.25, 0.55 - (tenure - 3) * 0.1)
+  // 续约：第 2 年起明显变难，避免一只二线队蹲到退役
+  const renewP = tenure <= 1 ? 0.88 : tenure === 2 ? 0.42 : Math.max(0.12, 0.32 - (tenure - 3) * 0.08)
   if (window && cur && p.yearScore >= needScore && tierIdx(cur.tier) >= floor && rand() < renewP) {
     const [a, b] = salaryRange(cur, false)
     out.unshift({ teamId: cur.id, salary: Math.round(irand(a, b) * (p.yearScore >= 16 ? 1.3 : 1)), role: 'starter' })
@@ -422,20 +429,32 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
 }
 
 /**
- * 自动选合同。同队待久了会更想动；更高档位略加分。
+ * 自动选合同。同队待久了会更想动；更高档位明显加分。
+ * 待满 2 年且桌上有升档合同 → 不续约，强制流动。
  */
 function pickOffer(meta: MetaSave, offers: ProOffer[]): ProOffer | null {
   if (!offers.length) return null
   const cur = meta.pro.teamId
   const curT = teamOf(cur)
   const tenure = yearsOnTeam(meta.pro, curT?.name)
+  const upOffers = curT
+    ? offers.filter((o) => {
+      const t = teamOf(o.teamId)
+      return t && tierIdx(t.tier) > tierIdx(curT.tier)
+    })
+    : []
+  // 卡二线太久：有升档就别续约
+  const pool = (tenure >= 2 && upOffers.length)
+    ? offers.filter((o) => o.teamId !== cur)
+    : offers
+  const use = pool.length ? pool : offers
   const score = (o: ProOffer) => {
     const t = teamOf(o.teamId)!
-    const stay = o.teamId === cur ? Math.max(-8, 14 - tenure * 8) : 0
-    const up = curT ? (tierIdx(t.tier) - tierIdx(curT.tier)) * 10 : 0
-    return o.salary / 1000 + (t.partner ? 18 : 0) + (o.role === 'starter' ? 28 : 0) + stay + up + irand(0, 18)
+    const stay = o.teamId === cur ? Math.max(-28, 6 - tenure * 14) : 0
+    const up = curT ? (tierIdx(t.tier) - tierIdx(curT.tier)) * 14 : 0
+    return o.salary / 1000 + (t.partner ? 16 : 0) + (o.role === 'starter' ? 26 : 0) + stay + up + irand(0, 16)
   }
-  return offers.slice().sort((a, b) => score(b) - score(a))[0]
+  return use.slice().sort((a, b) => score(b) - score(a))[0]
 }
 
 function applySign(meta: MetaSave, o: ProOffer, window = false) {
@@ -1010,8 +1029,8 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
   } else if (others.length) {
     // 有外队报价就别死续约
     applySign(meta, pickOffer(meta, others)!, true)
-  } else if (cur && !deadTeams.has(cur.id) && tierIdx(cur.tier) >= offerFloor(meta) && yearsOnTeam(p, cur.name) < 4) {
-    // 没人开价：前几年还能混；待太久就别硬留
+  } else if (cur && !deadTeams.has(cur.id) && tierIdx(cur.tier) >= offerFloor(meta) && yearsOnTeam(p, cur.name) < 2) {
+    // 没人开价：最多再混一年；别在二线板凳上蹲到退役
     const [a, b] = salaryRange(cur, true)
     applySign(meta, { teamId: cur.id, salary: irand(a, b), role: 'bench' }, true)
     L(meta, 'sys', `没人挖你。你留在 ${cur.short} 板凳上混着。`)

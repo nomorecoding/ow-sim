@@ -10,8 +10,13 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vite-plugin-singlefile": "^2.3.3"
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13",
+    "qrcode": "^1.5.4"
   }
 }

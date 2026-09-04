@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="6" fill="#0e1520"/>
-  <path d="M0 52h64v12H0z" fill="#2a4a7a"/>
-  <text x="32" y="30" text-anchor="middle" dominant-baseline="central" font-family="Arial Black, Helvetica, sans-serif" font-size="16" font-weight="800" fill="#7eb6ff" letter-spacing="-0.5">HE</text>
-</svg>
