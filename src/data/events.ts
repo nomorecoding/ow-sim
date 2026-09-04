@@ -164,7 +164,8 @@ export function pickEvent(g: LifeState, pool: LifeEvent[], used: Set<string>): L
   const cands = pool.filter((e) => !used.has(e.id) && (!e.when || e.when(g)))
   if (!cands.length) return null
   const weights = cands.map((e) => Math.max(0, w(e, g)))
-  let r = rand() * weights.reduce((a, b) => a + b, 0)
+  const total = weights.reduce((a, b) => a + b, 0)
+  let r = rand() * total
   for (let i = 0; i < cands.length; i++) {
     r -= weights[i]
     if (r <= 0) {
@@ -172,8 +173,10 @@ export function pickEvent(g: LifeState, pool: LifeEvent[], used: Set<string>): L
       used.add(e.id)
       g.tally[e.id] = (g.tally[e.id] ?? 0) + 1
       const text = e.run(g)
-      const line = { cls: e.cls ?? 'ev', text }
-      if (e.hl) g.highlights.push({ ...line, at: g.age })
+      // 小概率的（占池子不到 4%）或进高光的，日志里给个不一样的外观
+      const rare = e.hl || weights[i] / Math.max(1e-9, total) < 0.04
+      const line: LogLine = { cls: `${e.cls ?? 'ev'}${rare ? ' rare' : ''}`, text, at: g.age }
+      if (e.hl) g.highlights.push({ ...line })
       return line
     }
   }

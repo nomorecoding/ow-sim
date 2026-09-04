@@ -6,7 +6,7 @@
  */
 import type { Growth, LifeState, LogLine, MajorTier, MetaSave } from '../types'
 import {
-  ACH_PERKS, AGE_DECAY_PER_SEASON, BOOSTER_QUOTE, BOOST_LANDED_CASH, BOOST_SUSPEND_P, CHEAT_CATCH_MAX,
+  AGE_DECAY_PER_SEASON, BOOSTER_QUOTE, BOOST_LANDED_CASH, BOOST_SUSPEND_P, CHEAT_CATCH_MAX,
   CHEAT_CATCH_P, CREW_BONUS, DEFAULT_SPEED, EXP_BY_MAJOR, EXP_PRO, GLASS_INJURY_MULT, GLASS_INJURY_P, GLASS_INJURY_PASSION,
   HIDDEN_INFO, LATE_PASSION_START, LATE_PASSION_YEAR, LATE_QUIT_AGE, LATE_SCOUT_MAX_AGE, MAJOR_NAME,
   MARKET_BOOST_PASS, MARKET_CHEAT_PASS, MOMENTUM_PER_PCT, NEW_YEAR_PASSION, PASSION_START,
@@ -17,12 +17,11 @@ import {
 import { clamp, gauss, irand, majorFloor, majorOf, rand, rankScore, scoreToRank } from './rank'
 import { COMMON_EVENTS, DIRTY_EVENTS, EGG_EVENTS, LIFE_EVENTS, pickEvent } from '../data/events'
 import { unlock } from './ach'
-import { ACHIEVEMENTS } from '../data/achievements'
 import { addExp, rollHidden, rollTalent, talentShift } from '../data/talent'
 
 /** 隐藏天赋对这辈子的几个开关 */
-function quitAge(g: LifeState) { return g.hidden === 'late' ? LATE_QUIT_AGE : QUIT_AGE }
-function scoutMaxAge(g: LifeState) { return g.hidden === 'late' ? LATE_SCOUT_MAX_AGE : SCOUT_MAX_AGE }
+function quitAge(g: LifeState) { return (g.hidden === 'late' ? LATE_QUIT_AGE : QUIT_AGE) + (g.perks.includes('late') ? 2 : 0) }
+function scoutMaxAge(g: LifeState) { return (g.hidden === 'late' ? LATE_SCOUT_MAX_AGE : SCOUT_MAX_AGE) + (g.perks.includes('late') ? 1 : 0) }
 /** 晚熟的年龄曲线：二十四岁前慢，之后反而涨 */
 function lifeAgeMult(g: LifeState): number {
   if (g.hidden !== 'late') return ageMult(g.age)
@@ -31,6 +30,7 @@ function lifeAgeMult(g: LifeState): number {
   return 0.6
 }
 import { freshPro, startCareer } from './pro'
+import { achCount, perks } from './perks'
 import { buildLifeEnding, type LifeEndReason } from '../data/endings'
 
 const SAVE_KEY = 'ow-sim-meta-v5'
@@ -85,7 +85,7 @@ export function loadMeta(): MetaSave {
       const old = localStorage.getItem(k)
       if (!old) continue
       const o = JSON.parse(old) as Partial<MetaSave> & { seasonsPlayed?: number }
-      const m: MetaSave = { ...fresh, achievements: o.achievements ?? {}, endings: o.endings ?? {}, speed: o.speed ?? DEFAULT_SPEED, manual: o.manual ?? false }
+      const m: MetaSave = { ...fresh, achievements: o.achievements ?? {}, endings: o.endings ?? {}, speed: typeof o.speed === 'number' && o.speed >= 0.5 ? o.speed : DEFAULT_SPEED, manual: o.manual ?? false }
       m.growth.level = Math.min(6, Math.floor((o.seasonsPlayed ?? 0) / 6))
       return m
     }
@@ -97,19 +97,11 @@ export function writeMeta(m: MetaSave) {
   localStorage.setItem(SAVE_KEY, JSON.stringify(m))
 }
 
-export function achCount(meta: MetaSave): number {
-  return Object.keys(meta.achievements).filter((k) => ACHIEVEMENTS.some((a) => a.id === k)).length
-}
+export { achCount, perks }
 
 /** 下辈子天才 / 怪物合计上移的百分点 */
 export function currentShift(meta: MetaSave): number {
   return talentShift(achCount(meta), meta.growth.level)
-}
-
-/** 已解锁的成就传承 */
-export function perks(meta: MetaSave): Set<string> {
-  const n = achCount(meta)
-  return new Set(ACH_PERKS.filter((p) => n >= p.n).map((p) => p.id))
 }
 
 /* ———————————— 开局 ———————————— */
@@ -118,26 +110,22 @@ export function createLife(meta: MetaSave): LifeState {
   const persona = PERSONAS[irand(0, PERSONAS.length - 1)]
   const shift = currentShift(meta)
   const pk = perks(meta)
-  let talent = meta.debugTalent
+  const talent = meta.debugTalent
     ? { tier: meta.debugTalent, mmr: irand(TALENT_INFO[meta.debugTalent].start[0], TALENT_INFO[meta.debugTalent].start[1]) }
     : rollTalent(shift)
-  let rerolled = false
-  if (!meta.debugTalent && pk.has('reroll')) {
-    const t2 = rollTalent(shift)
-    if (TALENT_ORDER.indexOf(t2.tier) > TALENT_ORDER.indexOf(talent.tier)) { talent = t2; rerolled = true }
-  }
   meta.debugTalent = undefined
   meta.pro.active = false
   const rich = pk.has('rich') && rand() < 0.3
-  let passion = irand(PASSION_START[0], PASSION_START[1]) + (rich ? 150 : 0) + (pk.has('passion') ? 100 : 0)
+  let passion = irand(PASSION_START[0], PASSION_START[1]) + (rich ? 150 : 0) + (pk.has('passion') ? 80 : 0)
   const ti = TALENT_INFO[talent.tier]
-  const hidden = meta.debugHidden ?? rollHidden(meta.growth.level)
+  const hidden = meta.debugHidden ?? rollHidden(meta.growth.level, (pk.has('hidden1') ? 1.5 : 1) * (pk.has('hidden2') ? 1.5 : 1))
   meta.debugHidden = undefined
   if (hidden === 'late') passion += LATE_PASSION_START
   const g: LifeState = {
     persona,
     talent: talent.tier,
     hidden,
+    perks: [...pk],
     injured: false,
     mmr: talent.mmr,
     rank: scoreToRank(talent.mmr * 0.85),
@@ -181,7 +169,7 @@ export function createLife(meta: MetaSave): LifeState {
     over: false,
   }
   g.logs.push({ cls: 'sys', text: `${START_AGE} 岁，第一次打排位。人设【${persona.name}】——${persona.tagline}。${rich ? '家里有钱，网费不是问题。' : ''}` })
-  g.logs.push({ cls: 'talent', text: `天赋【${ti.name}】。${ti.range}。没人告诉你，你得自己打出来。${rerolled ? '（成就奖励：摇了两次，取高）' : ''}` })
+  g.logs.push({ cls: 'talent', text: `天赋【${ti.name}】。${ti.range}。没人告诉你，你得自己打出来。` })
   g.highlights.push({ cls: 'talent', text: `天赋【${ti.name}】`, at: START_AGE })
   if (talent.tier === 'something') unlock(g, 'talent_something')
   if (talent.tier === 'genius') unlock(g, 'talent_genius')
@@ -234,7 +222,7 @@ function wallOf(mmr: number): { score: number; into: MajorTier } | null {
 function breakChance(g: LifeState, into: MajorTier): number {
   const base = WALL_BASE[into] ?? 0.5
   const hid = g.hidden === 'clutch' ? 0.3 : g.hidden === 'aim' || g.hidden === 'glass' ? 0.05 : 0
-  const p = base + g.momentum / (MOMENTUM_PER_PCT * 100) + TALENT_INFO[g.talent].breakBonus + (g.crewSeasons > 0 ? CREW_BONUS : 0) + hid
+  const p = base + g.momentum / (MOMENTUM_PER_PCT * 100) + TALENT_INFO[g.talent].breakBonus + (g.crewSeasons > 0 ? CREW_BONUS : 0) + hid + (g.perks.includes('wall') ? 0.04 : 0)
   return clamp(p, 0.03, 0.97)
 }
 
@@ -280,8 +268,9 @@ function endLife(g: LifeState, reason: LifeEndReason) {
   unlock(g, `end_${g.ending.id.replace(/_.*$/, '')}`)
   if (g.ending.id.startsWith('cloudmud')) {
     unlock(g, 'cloudmud_any')
-    if (g.rank.major === 'plat') unlock(g, 'cloudmud_plat')
-    if (g.rank.major === 'master') unlock(g, 'cloudmud_master')
+    const peakMajor = scoreToRank(g.peakScore).major
+    if (peakMajor === 'plat') unlock(g, 'cloudmud_plat')
+    if (peakMajor === 'master') unlock(g, 'cloudmud_master')
   }
   g.achLocked = wasLocked
 }
@@ -320,7 +309,7 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
       const before = rankScore(g.rank)
       const target = clamp(g.mmr + g.fakeBoost, 0, wallCap(g))
       g.rank = scoreToRank(before + (target - before) * 0.7)
-      const ny = NEW_YEAR_PASSION + (g.hidden === 'late' ? LATE_PASSION_YEAR : 0)
+      const ny = NEW_YEAR_PASSION + (g.hidden === 'late' ? LATE_PASSION_YEAR : 0) + (g.perks.includes('newyear') ? 30 : 0)
       passionAdd(g, ny)
       L(g, 'sys', `【${g.age} 岁】新的一年。软重置，重新定级。热情 +${ny}。${g.hidden === 'late' && g.age >= 24 ? '不知道为什么，还是想打。' : ''}`)
       yield 'step'
@@ -377,8 +366,8 @@ function* season(meta: MetaSave, g: LifeState): Generator<Tick, void, void> {
       passionAdd(g, bonus)
       g.momentum = 0
       g.stuckSeasons = 0
-      wallLine = { cls: 'win', text: `【突破】${MAJOR_NAME[wall.into]}！这游戏又好玩了。热情 +${bonus}。` }
-      H(g, { cls: 'win', text: `突破 ${MAJOR_NAME[wall.into]}` })
+      wallLine = { cls: 'win', text: `【上${MAJOR_NAME[wall.into]}了】这游戏又好玩了。热情 +${bonus}。` }
+      H(g, { cls: 'win', text: `上了${MAJOR_NAME[wall.into]}` })
     } else {
       g.stuckSeasons++
       g.stuckTotal++
@@ -524,7 +513,7 @@ function* deadline(g: LifeState, into: MajorTier): Generator<Tick, void, void> {
   L(g, 'warn', `【死线】热情只剩 ${g.passion}，卡在${MAJOR_NAME[into]}门口。私信里那条代练广告还在。`)
   yield 'step'
   if (a === 'quit') { L(g, 'sys', '你想了想，把游戏删了。'); yield 'step'; endLife(g, 'quit'); return }
-  if (a === 'grind') { L(g, 'sys', `你把广告删了，决定自己打。突破概率 ${Math.round(breakChance(g, into) * 100)}%。`); yield 'step'; return }
+  if (a === 'grind') { L(g, 'sys', `你把广告删了，决定自己打。这季能不能上去，看手感：${Math.round(breakChance(g, into) * 100)}%。`); yield 'step'; return }
   const cheat = a === 'cheat'
   g.usedMarket = true
   if (cheat) {
@@ -623,6 +612,7 @@ export function commitLife(g: LifeState, meta: MetaSave): { toPro: boolean; exp:
     meta.cashLow = Math.min(0, g.cash)
     startCareer(meta, g.age, g.talent, g.hidden)
     if (perks(meta).has('pro')) meta.pro.talentBonus += 3
+    if (perks(meta).has('legend')) meta.pro.talentBonus += 4
   }
   return { toPro: g.scouted, exp, ups }
 }

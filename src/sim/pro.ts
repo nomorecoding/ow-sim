@@ -11,6 +11,7 @@ import {
 } from '../data/constants'
 import { clamp, irand, rand } from './rank'
 import { ACH_MAP } from '../data/achievements'
+import { perks } from './perks'
 import { afterlife, buildProEnding, type ProEndReason } from '../data/endings'
 import { addExp } from '../data/talent'
 
@@ -21,7 +22,7 @@ export function freshPro(): ProState {
     runs: 0, active: false, age: 17, year: 0, teamId: null, salary: 0,
     form: 'ok', skill: 55, fame: 0, benchYears: 0, idleYears: 0, yearScore: 0, history: [],
     titles: { regional: 0, intl: 0, world: 0, worldCup: 0, owwc: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
-    clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [],
+    talent: 'normal', hidden: null, clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [],
     yearDone: false, stageAt: 0, level: 0, peakLevel: 0, lvNote: '', endings: {},
   }
 }
@@ -75,6 +76,7 @@ export function startCareer(meta: MetaSave, age: number, talent: TalentTier, hid
   const keep = { runs: p.runs + 1, growth: p.growth, lifetimeBan: p.lifetimeBan, endings: p.endings }
   Object.assign(p, freshPro(), keep)
   p.age = age
+  p.talent = talent
   p.hidden = hidden
   p.talentBonus = TALENT_PRO_BONUS[talent] + (hidden ? HIDDEN_INFO[hidden].proBonus : 0)
   p.fame = meta.fans
@@ -272,7 +274,7 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
     if (cur && t.id === cur.id) continue
     if (deadTeams.has(t.id)) continue
     const need = teamRating(t) - 8
-    const pr = t.partner ? clamp((value - need) / 40 + 0.1, 0, 0.6) : clamp((value - need) / 30 + 0.22, 0.03, 0.75)
+    const pr = t.partner ? clamp((value - need) / 40 + 0.1, 0, 0.6) * (perks(meta).has('offers') ? 1.4 : 1) : clamp((value - need) / 30 + 0.22, 0.03, 0.75)
     if (rand() < pr) {
       const bench = p.skill < teamRating(t) - 15
       const [a, b] = bench ? SALARY.bench : t.partner ? SALARY.partner : SALARY.normal
@@ -645,7 +647,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     if (exposureCheck(meta, '国际赛资格审查')) return
     if (!p.teamId) { say('warn', `队伍带着替补去了${name}。你在家看的直播。`); yield 'step'; return }
     const tier = stage === 1 ? LV.intl : LV.worlds
-    const opps = Array.from({ length: 7 }, () => irand(stage === 1 ? 68 : 72, 94))
+    const opps = Array.from({ length: 7 }, () => irand(stage === 1 ? 68 : 72, 94) - (perks(meta).has('clutch') ? 2 : 0))
     const foes = [...OPP].sort(() => Math.random() - 0.5)
     let gw = 0
     for (let i = 0; i < 2; i++) if (series(you, opps[i], 5).win) gw++
@@ -686,7 +688,7 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     H(meta, il)
     yield 'step'
     // FMVP：世界总决赛冠军且状态在线以上才有资格摇
-    if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0) * (p.hidden === 'clutch' ? 2 : 1)) {
+    if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0) * (p.hidden === 'clutch' ? 2 : 1) * (perks(meta).has('clutch') ? 1.5 : 1)) {
       p.titles.fmvp++
       addFame(meta, 150000)
       levelUp(meta, LV.fmvp, `${name} · FMVP`)

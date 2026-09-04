@@ -46,7 +46,7 @@ const PEAK_TITLE: Record<MajorTier, [string, string]> = {
   gold: ['黄金守门员', '黄金 1 到白金 5 之间，你来回走了很多年。'],
   plat: ['白金人', '白金。你这辈子的段位。'],
   emerald: ['翡翠', '翡翠是你的顶。往上看过一眼，没上去。'],
-  diamond: ['钻石守门员', '钻石墙。多少人在这儿和你一样，抬头看大师。'],
+  diamond: ['钻石守门员', '钻石。多少人在这儿和你一样，抬头看大师。'],
   master: ['大师', '大师。在网吧里够吹一辈子的段位。'],
   gm: ['路人王', '宗师。没进职业，但排到你的人都知道你是谁。'],
   champ: ['英杰路人', '英杰。离 500 强差一个榜单，离职业差一条私信。'],
@@ -83,7 +83,7 @@ function lifeStory(g: LifeState): string {
     const n = g.tally[k] ?? 0
     if (n > 0) items.push(f(n))
   }
-  if (g.stuckTotal >= 3) items.unshift(`卡墙 ${g.stuckTotal} 季`)
+  if (g.stuckTotal >= 3) items.unshift(`卡分 ${g.stuckTotal} 季`)
   if (g.usedMarket) items.push(g.dirty.cheatSeasons ? '开过挂' : '请过代练')
   const picked = items.slice(0, 4)
   if (!picked.length) return `一辈子没什么大事。人设【${g.persona.name}】——${g.persona.tagline}`
@@ -112,7 +112,7 @@ export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEndi
       id: 'banned', title: '永封 · 官方验证通过', rankLabel: label,
       verse: [
         '登录时跳出一行字：该账号因使用第三方程序被永久封停。申诉入口是灰的。',
-        bio + '最后一道墙没自己过去。',
+        bio + '最后那一分没自己打上去。',
         story,
         '开挂之后解锁的成就一个没算。这个 ID 以后没有战队会看。',
       ],
@@ -124,9 +124,9 @@ export function buildLifeEnding(g: LifeState, reason: LifeEndReason): SeasonEndi
       verse: ['接单收入过了十万。你把最后一个老板拉黑，付了首付。', bio, story, '你以后再排到代练，也没资格骂了。'],
     }
   }
-  // 云泥：退坑时停在 X1·99
-  if (isAtMajorGate(g.rank) && g.rank.rp === 99) {
-    const cm = buildCloudMudEnding(g.rank.major, g.age)
+  // 云泥：人生峰值就卡在 X1·99（结算大字那段），掉下来之后的尾声不算
+  if (isAtMajorGate(peak) && peak.rp === 99) {
+    const cm = buildCloudMudEnding(peak.major, g.age)
     if (cm) return { ...cm, verse: [...cm.verse, story] }
   }
   // 隐藏结局：只有带隐藏天赋、又走到了那一步的人才会看到
@@ -168,10 +168,10 @@ function buildHiddenEnding(g: LifeState, label: string, bio: string, story: stri
     return {
       id: 'unstuck', title: '从没卡过', rankLabel: label,
       verse: [
-        '别人卡墙卡出心理阴影，你一辈子没在任何一道门口停过一季。',
+        '别人卡 99 卡出心理阴影，你一辈子没在 99 分上停过一季。',
         bio + '每一次「差一口气」，你都刚好有那口气。',
         story,
-        '你不理解为什么有人说这游戏有墙。',
+        '你不理解为什么有人说这游戏卡分。',
       ],
     }
   }

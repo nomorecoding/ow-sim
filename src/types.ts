@@ -82,6 +82,8 @@ export interface LifeState {
   talent: TalentTier
   /** 隐藏天赋（极小概率） */
   hidden: HiddenTalent | null
+  /** 这辈子带着的成就奖励 id */
+  perks: string[]
   /** 玻璃手：手腕已经废过一次 */
   injured: boolean
   /** 隐藏真实实力（分数尺度） */
@@ -211,6 +213,8 @@ export interface ProState {
   runs: number
   /** 生涯进行中 */
   active: boolean
+  /** 从天梯带进来的天赋（职业页显示为蓝领→GOAT） */
+  talent?: TalentTier
   /** 从天梯带进来的隐藏天赋 */
   hidden?: HiddenTalent | null
   age: number

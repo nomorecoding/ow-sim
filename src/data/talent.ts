@@ -6,11 +6,11 @@ import {
 import { irand, rand } from '../sim/rank'
 
 /** 隐藏天赋：合计约 3%，每级再加一点点；摇不到就是 null */
-export function rollHidden(level: number): HiddenTalent | null {
+export function rollHidden(level: number, mult = 1): HiddenTalent | null {
   const extra = Math.min(HIDDEN_LEVEL_CAP, level * HIDDEN_PER_LEVEL) / HIDDEN_ORDER.length
   let r = rand() * 100
   for (const h of HIDDEN_ORDER) {
-    r -= HIDDEN_INFO[h].p + extra
+    r -= (HIDDEN_INFO[h].p + extra) * mult
     if (r < 0) return h
   }
   return null

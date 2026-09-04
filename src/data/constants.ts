@@ -35,8 +35,12 @@ export const RANK_COLOR_CLASS: Record<MajorTier, string> = {
   top: 'rank-top',
 }
 
-export const DEFAULT_SPEED = 0.35
-export const MIN_SPEED = 0.05
+/** 滚屏节奏：主玩法一季 0.1s，职业一行 0.15s；设置里的「速度」是统一倍率，两边一起缩放 */
+export const LIFE_TICK_MS = 100
+export const PRO_TICK_MS = 150
+export const DEFAULT_SPEED = 1
+export const MIN_SPEED = 0.5
+export const MAX_SPEED = 10
 
 /* ———————————— 人生 ———————————— */
 
@@ -84,6 +88,18 @@ export const TALENT_INFO: Record<TalentTier, {
   something: { name: '有点东西', base: 18,  cls: 'tal-2', slope: 160, sigma: 80,  breakBonus: 0.08,  start: [700, 1300],  range: '钻石–大师可期' },
   genius:    { name: '天才',     base: 7,   cls: 'tal-3', slope: 240, sigma: 90,  breakBonus: 0.16,  start: [900, 1600],  range: '宗师–英杰' },
   monster:   { name: '怪物',     base: 2,   cls: 'tal-4', slope: 340, sigma: 100, breakBonus: 0.25,  start: [1250, 1800], range: '500 强的料' },
+}
+
+/**
+ * 职业档位：天梯天赋带进职业后的叫法。
+ * 木桶→蓝领，普通→路人王，有点东西→城市天才，天才→国一，怪物→GOAT。
+ */
+export const PRO_TALENT_INFO: Record<TalentTier, { name: string; tag: string; range: string }> = {
+  barrel:    { name: '蓝领',     tag: '上场拿工资',             range: '替补 / 二队主力，冠军看队友' },
+  normal:    { name: '路人王',   tag: '天梯很强，职业够格',     range: '常规赛常客，季后赛边缘' },
+  something: { name: '城市天才', tag: '一块特别能打',           range: '区域明星 · 专精主播那档' },
+  genius:    { name: '国一',     tag: '赛区天花板',             range: '国一长枪 / 自由人 · 亚洲前列' },
+  monster:   { name: 'GOAT',     tag: 'donk / ZywOo / Faker',   range: '改写赛区的那个人' },
 }
 
 /* ———————————— 经验 / 等级：只改天才、怪物的概率 ———————————— */
@@ -171,20 +187,29 @@ export const TRIAL_BASE = 0.55
 /** 有代练 / 陪玩记录时试训通过率的折扣（开挂记录直接政审不过） */
 export const TRIAL_DIRTY_MULT = 0.6
 
-/* ———————————— 成就奖励：成就攒到一定数量，下辈子永久带着的 buff ———————————— */
+/* ———————————— 成就奖励：成就攒到一定数量，下辈子永久带着的 buff ————————————
+ * 曲线：前期加的是「多打几季 / 更容易上去」，中后期加的是给那批小概率成就铺路——
+ * 隐藏天赋、大龄新人、世界冠军、FMVP。攒得越多，够得着的越远。 */
 export const ACH_PERKS: Array<{ n: number; id: string; name: string; desc: string }> = [
-  { n: 10, id: 'reroll', name: '天赋重摇', desc: '每辈子开局摇两次天赋，取高的那次' },
-  { n: 20, id: 'rich', name: '富裕出身', desc: '每辈子 30% 生在有钱人家：热情 +150、现金 +20000、不用交房租' },
-  { n: 30, id: 'scout', name: '教练人脉', desc: '被青训教练私信的概率 ×1.5' },
-  { n: 40, id: 'passion', name: '更能打', desc: '每辈子起始热情 +100（多打两三季）' },
-  { n: 50, id: 'pro', name: '职业底子', desc: '进职业后状态成长起点 +3（更容易摇到好状态）' },
+  { n: 5,  id: 'passion', name: '更能打',   desc: '每辈子起始热情 +80，多打两三季' },
+  { n: 10, id: 'rich',    name: '富裕出身', desc: '每辈子 30% 生在有钱人家：热情 +150、现金 +20000、不用交房租' },
+  { n: 15, id: 'wall',    name: '老油条',   desc: '升大段那几把更容易打顺（+4%）' },
+  { n: 20, id: 'scout',   name: '教练人脉', desc: '被青训教练私信的概率 ×1.5' },
+  { n: 28, id: 'pro',     name: '职业底子', desc: '进职业后状态成长起点 +3' },
+  { n: 36, id: 'late',    name: '舍不得删', desc: '退坑年龄 +2，被发掘的年龄上限 +1' },
+  { n: 44, id: 'hidden1', name: '天选',     desc: '摇到隐藏天赋的概率 ×1.5' },
+  { n: 52, id: 'offers',  name: '经纪人',   desc: '合作战队给报价的概率 ×1.4' },
+  { n: 60, id: 'clutch',  name: '关键局',   desc: '国际赛实力 +2，FMVP 概率 ×1.5' },
+  { n: 70, id: 'newyear', name: '热爱',     desc: '每年过年多回 +30 热情' },
+  { n: 80, id: 'hidden2', name: '命定',     desc: '隐藏天赋概率再 ×1.5（叠加到 ×2.25）' },
+  { n: 90, id: 'legend',  name: '传奇底子', desc: '进职业后状态成长起点再 +4' },
 ]
 
 /* ———————————— 隐藏天赋：极小概率叠在天赋之上，各自通向一个隐藏结局 ———————————— */
 export const HIDDEN_ORDER: HiddenTalent[] = ['aim', 'clutch', 'late', 'glass']
 export const HIDDEN_INFO: Record<HiddenTalent, { name: string; p: number; line: string; proBonus: number }> = {
   aim:    { name: '天生神枪', p: 0.8, line: '第一把就有人在公屏问你开没开。你没有。', proBonus: 4 },
-  clutch: { name: '大心脏',   p: 0.8, line: '越是决胜局手越稳。墙对你来说只是一道门。', proBonus: 2 },
+  clutch: { name: '大心脏',   p: 0.8, line: '越是决胜局手越稳。别人卡分的地方你一把就过。', proBonus: 2 },
   late:   { name: '晚熟',     p: 0.8, line: '二十岁前平平无奇。别人退坑的年纪，你才开始涨。', proBonus: 0 },
   glass:  { name: '玻璃手',   p: 0.8, line: '手感好到吓人，但手腕是借来的。', proBonus: 3 },
 }

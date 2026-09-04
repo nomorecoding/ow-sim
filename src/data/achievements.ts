@@ -3,7 +3,7 @@ import type { Achievement } from '../types'
 export const ACHIEVEMENTS: Achievement[] = [
   // —— 段位 ——
   { id: 'reach_diamond', name: '钻石守门员', desc: '一辈子里触及钻石' },
-  { id: 'reach_master', name: '大师墙', desc: '触及大师' },
+  { id: 'reach_master', name: '摸到大师', desc: '触及大师' },
   { id: 'reach_gm', name: '宗师', desc: '触及宗师' },
   { id: 'reach_champ', name: '英杰', desc: '触及英杰' },
   { id: 'reach_top', name: '500 强', desc: '打进国服 500 强榜单' },
@@ -11,8 +11,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'talent_something', name: '有点东西', desc: '摇到「有点东西」' },
   { id: 'talent_genius', name: '天才', desc: '摇到「天才」' },
   { id: 'talent_monster', name: '怪物', desc: '摇到「怪物」' },
-  // —— 墙 ——
-  { id: 'stuck5', name: '撞墙专业户', desc: '一辈子卡墙 5 季' },
+  // —— 卡分 ——
+  { id: 'stuck5', name: '99 分常客', desc: '一辈子在 X1·99 上停了 5 季' },
   { id: 'switch_pool', name: '换池子', desc: '瓶颈时把本命锁进池底' },
   { id: 'coached', name: '复盘', desc: '花钱找退役选手复盘' },
   { id: 'cloudmud_any', name: '差一分', desc: '退坑时停在任一大段 1·99' },
@@ -52,7 +52,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'first_hire', name: '花钱买段', desc: '死线上请了代练' },
   { id: 'suspended', name: '封 30 天', desc: '代练留下的账，还了一季' },
   { id: 'cheat_on', name: '开挂了', desc: '死线上开了挂' },
-  { id: 'fake_wall', name: '图标是真的', desc: '靠黑市过了一道墙' },
+  { id: 'fake_wall', name: '图标是真的', desc: '靠黑市上了一个大段' },
   { id: 'end_banned', name: '封号', desc: '被封了' },
   { id: 'end_landed', name: '上岸', desc: '接单收入十万' },
   // —— 结局 ——

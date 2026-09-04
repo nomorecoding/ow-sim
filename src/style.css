@@ -192,12 +192,8 @@ b { font-weight: 600; color: var(--bone); }
   font-variant-numeric: lining-nums tabular-nums;
 }
 .rank-hero .cn { font-family: var(--display); letter-spacing: 0.1em; }
-.rank-hero.bump { animation: bump 0.55s cubic-bezier(.2,.9,.3,1.4) both; }
-.rank-hero.bump-sm .lv-note { animation: bumpNote 0.4s ease-out both; }
-@keyframes bump { 0% { transform: scale(0.92); opacity: 0.4; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; } }
-@keyframes bumpNote { 0% { transform: translateY(-4px); opacity: 0; } 100% { transform: none; opacity: 1; } }
-/* 赛事高度下的小字：具体赛事 · 名次 */
-.rank-hero .lv-note { display: block; font-family: var(--display); font-size: 0.34em; letter-spacing: 0.12em; color: var(--bone); margin-top: 4px; font-weight: 400; opacity: 0.85; }
+/* 赛事高度下的小字：具体赛事 · 名次。级别变了只换颜色，不弹跳 */
+.rank-hero .lv-note { display: block; font-family: var(--display); font-size: 0.34em; letter-spacing: 0.12em; color: var(--bone); margin-top: 4px; font-weight: 400; opacity: 0.85; transition: opacity 0.25s ease; }
 .rank-bronze { color: #b07a4a; }
 .rank-silver { color: #adb1b8; }
 .rank-gold { color: #d4af5a; }
@@ -208,6 +204,153 @@ b { font-weight: 600; color: var(--bone); }
 .rank-gm { color: #b48fdc; }
 .rank-champ { color: #e2a75f; text-shadow: 0 0 18px rgba(226, 167, 95, 0.25); }
 .rank-top { color: #e28aa5; text-shadow: 0 0 18px rgba(226, 138, 165, 0.3); }
+
+/* ———— 主玩法 / 职业 HUD ———— */
+.hero-row { display: flex; align-items: flex-end; gap: 14px; margin: 2px 0 4px; }
+.hero-row .rank-hero { flex: 1; margin: 0; min-width: 0; }
+.persona-line { margin: 0 0 10px; color: var(--bone-dim); }
+.btn-row { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.btn-row .btn { margin: 0; }
+
+/* 天赋牌：段位旁边那张一辈子不变的牌 */
+.tal-plate {
+  flex: 0 0 auto; min-width: 5.2em; max-width: 7.5em;
+  padding: 8px 12px 10px; border: 1px solid currentColor; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.03); line-height: 1.15;
+}
+.tal-plate small { display: block; font-size: 0.58rem; letter-spacing: 0.28em; color: var(--bone-faint); margin-bottom: 4px; }
+.tal-plate b { display: block; font-family: var(--display); font-size: 1.35rem; font-weight: 700; letter-spacing: 0.08em; }
+.tal-plate .tal-h, .tal-plate em.tal-h {
+  display: block; margin-top: 6px; font-style: normal; font-family: var(--display);
+  font-size: 0.72rem; letter-spacing: 0.14em; color: #c9b6f2;
+  text-shadow: 0 0 12px rgba(184, 161, 230, 0.55);
+}
+.tal-plate.has-h { box-shadow: 0 0 0 1px rgba(184, 161, 230, 0.35), 0 0 22px rgba(120, 90, 200, 0.18); }
+.tal-plate.tal-4 { border-color: var(--brass); background: linear-gradient(160deg, rgba(240, 214, 138, 0.12), transparent 70%); -webkit-text-fill-color: var(--brass); background-clip: border-box; -webkit-background-clip: border-box; animation: none; }
+.tal-plate.tal-3 { border-color: var(--brass); color: var(--brass); -webkit-text-fill-color: currentColor; }
+.tal-plate.pro-tier .pt-tag { display: block; margin-top: 4px; font-size: 0.62rem; color: var(--bone-dim); letter-spacing: 0.04em; }
+
+/* 热情血条：只写还能打几季，不报数字 */
+.hp {
+  position: relative; height: 22px; margin: 6px 0 10px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--hair-2); overflow: hidden;
+}
+.hp-fill {
+  position: absolute; inset: 0 auto 0 0; width: 0%;
+  background: linear-gradient(90deg, #3d8f6a, #6cc3a0 55%, #9fbf9a);
+  transition: width 0.35s ease, background 0.3s ease;
+}
+.hp.mid .hp-fill { background: linear-gradient(90deg, #b07a2a, #d4af5a 60%, #e8d7a8); }
+.hp.lo .hp-fill { background: linear-gradient(90deg, #8a2f2f, #c45a5a 55%, #e08a8a); }
+.hp-l, .hp-r {
+  position: absolute; top: 0; bottom: 0; z-index: 1;
+  display: flex; align-items: center; font-size: 0.7rem; letter-spacing: 0.12em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.hp-l { left: 10px; color: var(--bone); font-family: var(--display); }
+.hp-r { right: 10px; color: var(--bone); }
+.hp.hit { animation: hpHit 0.45s ease; }
+.hp.heal { animation: hpHeal 0.45s ease; }
+@keyframes hpHit { 0%, 100% { filter: none; } 40% { filter: brightness(1.4) saturate(1.3); box-shadow: inset 0 0 0 1px #c45a5a; } }
+@keyframes hpHeal { 0%, 100% { filter: none; } 40% { filter: brightness(1.25); box-shadow: inset 0 0 0 1px #6cc3a0; } }
+
+/* 钱包 / 人气：档位词 + 进度条，数字只在 title */
+.res-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin: 0 0 8px; }
+.res-group { display: flex; flex: 1; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.res-bar {
+  position: relative; flex: 1; min-width: 140px; max-width: 280px;
+  padding: 4px 0 2px;
+}
+.res-bar .rb-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.res-bar .res-k { font-size: 0.62rem; letter-spacing: 0.22em; color: var(--bone-faint); font-family: var(--display); }
+.res-bar .res-t { font-size: 0.82rem; color: var(--bone); letter-spacing: 0.06em; }
+.res-bar .rb-track { height: 5px; background: var(--hair); overflow: hidden; }
+.res-bar .rb-fill { display: block; height: 100%; width: 0%; transition: width 0.4s ease; background: currentColor; }
+.res-bar.cash { color: #d4af5a; }
+.res-bar.fans { color: #86aee8; }
+.res-bar.neg { color: #c45a5a; }
+.res-bar.t0 .res-t { color: var(--bone-faint); }
+.res-bar.t4 .res-t, .res-bar.t5 .res-t { color: inherit; font-weight: 600; }
+.coin-burst {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 2;
+}
+.coin-burst i {
+  position: absolute; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) scale(0);
+  animation: coinOut 0.85s ease-out forwards;
+  opacity: 0.9;
+}
+@keyframes coinOut {
+  0% { transform: rotate(var(--a)) translateY(0) scale(0.4); opacity: 1; }
+  100% { transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) scale(1); opacity: 0; }
+}
+.float {
+  position: absolute; right: 0; top: -2px; z-index: 3;
+  font-family: var(--numeral); font-size: 0.78rem; pointer-events: none;
+  animation: floatUp 1.2s ease-out forwards;
+}
+.float.up { color: var(--sage); }
+.float.down { color: #c45a5a; }
+@keyframes floatUp {
+  0% { transform: translateY(4px); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(-18px); opacity: 0; }
+}
+
+.flags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.flag {
+  font-size: 0.68rem; letter-spacing: 0.08em; padding: 2px 8px;
+  border: 1px solid var(--hair-2); color: var(--bone-dim);
+}
+.flag.win { color: var(--sage); border-color: rgba(159, 191, 154, 0.45); }
+.flag.warn { color: #e2a75f; border-color: rgba(226, 167, 95, 0.45); }
+.flag.ban { color: #c45a5a; border-color: rgba(196, 90, 90, 0.45); }
+
+/* 职业：档位 + 状态 + 奖杯柜 */
+.pro-side { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 10px; }
+.form-chip, .team-chip {
+  font-family: var(--display); font-size: 0.78rem; letter-spacing: 0.14em;
+  padding: 4px 10px; border: 1px solid currentColor;
+}
+.team-chip { color: var(--bone-dim); border-color: var(--hair-2); }
+.trophies { min-height: 36px; margin: 0 0 10px; }
+.trophy-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.trophy {
+  display: inline-flex; width: 28px; height: 28px; color: var(--brass);
+  filter: drop-shadow(0 0 6px rgba(201, 165, 92, 0.35));
+}
+.trophy svg { width: 100%; height: 100%; display: block; }
+.trophy.t-fmvp { color: #f0d68a; filter: drop-shadow(0 0 10px rgba(240, 214, 138, 0.55)); }
+.trophy.t-world { color: #e2a75f; }
+.trophy.t-owwc { color: #86aee8; }
+.trophy.t-intl { color: #bdd486; }
+.trophy.t-regional { color: #c9a55c; }
+.trophy.t-cap { color: #adb1b8; }
+.trophy.new { animation: trophyIn 0.55s cubic-bezier(.2,.9,.3,1.3) both; }
+@keyframes trophyIn {
+  0% { transform: scale(0.4) translateY(8px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+.trophy-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 6px; font-size: 0.66rem; letter-spacing: 0.08em; color: var(--bone-dim); }
+.trophy-legend span { color: inherit; }
+.trophy-legend .t-fmvp { color: #f0d68a; }
+.trophy-legend .t-world { color: #e2a75f; }
+.trophy-legend .t-owwc { color: #86aee8; }
+.trophy-empty { font-size: 0.74rem; color: var(--bone-faint); letter-spacing: 0.06em; }
+
+/* 稀有事件：颜色 / 描边区分，不靠放大 */
+.log-box .rare, .hl.rare {
+  color: #e8d7a8;
+  border-left: 2px solid #c9a55c !important;
+  background: linear-gradient(90deg, rgba(201, 165, 92, 0.12), transparent 70%);
+  text-shadow: 0 0 14px rgba(240, 214, 138, 0.25);
+}
+.log-box .rare.hidden, .hl.rare.hidden, .log-box .hidden.rare {
+  color: #c9b6f2;
+  border-left-color: #b8a1e6 !important;
+  background: linear-gradient(90deg, rgba(120, 90, 200, 0.16), transparent 70%);
+  text-shadow: 0 0 14px rgba(184, 161, 230, 0.35);
+}
 
 /* ———— 天赋 ———— */
 .talent-badge {
