@@ -10,16 +10,18 @@ import { achCount, beginLife, chooseDark, clearAllSaves, commitLife, createLife,
 import { clamp, scoreToRank } from './sim/rank'
 import { beginCareerRun, careerInProgress, exposureP, proStep, retireNow, teamOf, teamRating } from './sim/pro'
 
+import { teamLogoDataUri } from './data/teamLogos'
+
 const fmt = (n: number) => n.toLocaleString()
 const DEBUG = new URLSearchParams(location.search).has('debug')
-const teamLogoUrl = (file: string) => `${import.meta.env.BASE_URL}teams/${file}`
+const teamLogoUrl = (file: string) => teamLogoDataUri(file) ?? `${import.meta.env.BASE_URL}teams/${file}`
 
 /** 队名徽章：logo + 队名，边框按档位越来越炫；外援挂角标 */
 function teamBadge(t: Team | null) {
   if (!t) return `<div class="team-badge tm-free"><span class="tb-name">自由人</span></div>`
   const tag = t.region !== 'cn' ? '<em class="tb-tag">外援</em>' : ''
   return `<div class="team-badge ${TEAM_TIER_CLASS[t.tier]}">
-    <img class="tb-logo" src="${teamLogoUrl(t.logo)}" alt="" width="36" height="36" />
+    <img class="tb-logo" src="${teamLogoUrl(t.logo)}" alt="" width="36" height="36" decoding="async" />
     <div class="tb-text"><b class="tb-name">${t.name}</b>${tag}</div>
   </div>`
 }
@@ -35,15 +37,20 @@ function replaceMeta(next: MetaSave) {
 
 /* ———————————— 外观主题 ———————————— */
 const THEMES = [
-  { id: 'arena', name: '赛场', desc: '深蓝黑 · 亮橙 · 粗黑体切角，转播包装味（默认）' },
+  { id: 'arena', name: '赛场', desc: '深蓝黑 · 亮橙 · 粗黑体切角（默认）' },
   { id: 'dossier', name: '档案', desc: '黑曜石 · 古铜 · 宋体' },
-  { id: 'paper', name: '报纸', desc: '米白纸 · 墨字 · 红章，亮色' },
-  { id: 'terminal', name: '终端', desc: '黑底荧光绿 · 等宽 · 一切从简' },
-  { id: 'neon', name: '霓虹', desc: '深紫 · 品红 + 青光 · 发光描边' },
+  { id: 'paper', name: '报纸', desc: '米白纸 · 墨字 · 红章' },
 ]
 function currentTheme() {
   const q = new URLSearchParams(location.search).get('theme')
-  return (q && THEMES.some((t) => t.id === q)) ? q : (meta.theme ?? 'arena')
+  const raw = (q && THEMES.some((t) => t.id === q)) ? q : (meta.theme ?? 'arena')
+  // 旧档若选了已下架主题，回落到赛场
+  const id = THEMES.some((t) => t.id === raw) ? raw : 'arena'
+  if (meta.theme && meta.theme !== id && !THEMES.some((t) => t.id === meta.theme)) {
+    meta.theme = id
+    writeMeta(meta)
+  }
+  return id
 }
 function applyTheme() {
   document.documentElement.dataset.theme = currentTheme()
@@ -452,25 +459,25 @@ function renderTrophies(id: string, animate: boolean) {
 
 /* ———————————— 首页 ———————————— */
 
-/** 下辈子天赋：等级加成写在经验行；天才/怪物只报合计 */
+/** 下辈子天赋：条 + 等级加成，少废话 */
 function talentBar() {
   const shift = currentShift(meta)
   const probs = talentProbs(shift)
   const hi = probs.genius + probs.monster
   const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${TALENT_INFO[t].name}</span>`).join('')
-  return `<div class="section" style="padding-bottom:10px">
-    <div class="row" style="border-bottom:0;padding:0 0 8px;align-items:center;gap:10px;flex-wrap:wrap">
-      <span class="label" style="margin:0">下辈子投胎</span>
+  return `<div class="home-tal">
+    <div class="home-tal-head">
+      <span class="label">投胎</span>
       ${expLine()}
       ${levelBonusHtml()}
+      <span class="tal-hi-inline">天才+怪物 <b class="num">${pct1(hi)}%</b></span>
     </div>
     ${talentStack(shift)}
     <div class="tal-legend">${legend}</div>
-    <div class="tal-hi-line">天才 + 怪物 <b class="num">${pct1(hi)}%</b></div>
   </div>`
 }
 
-/** 成就奖励：chip 分行；成就加成写在这里 */
+/** 成就奖励：只亮已解锁 + 下一档 */
 function perkLine() {
   const n = achCount(meta)
   const got = ACH_PERKS.filter((p) => n >= p.n)
@@ -478,12 +485,8 @@ function perkLine() {
   if (!got.length && !next && !achBonusHtml()) return ''
   const chips = got.map((p) => `<span class="perk-chip" title="${p.desc}">${p.name}</span>`).join('')
   const nextChip = next ? `<span class="perk-chip next">还差 ${next.n - n} · ${next.name}</span>` : ''
-  return `<div class="section" style="padding-top:8px">
-    <div class="row" style="border-bottom:0;padding:0 0 6px;align-items:center;gap:10px;flex-wrap:wrap">
-      <span class="label" style="margin:0">成就奖励</span>
-      <span class="tip">${got.length}/${ACH_PERKS.length}</span>
-      ${achBonusHtml()}
-    </div>
+  return `<div class="home-perks">
+    <div class="home-perks-head"><span class="label">成就</span><span class="tip">${got.length}/${ACH_PERKS.length}</span>${achBonusHtml()}</div>
     <div class="perk-chips">${chips}${nextChip}</div>
   </div>`
 }
@@ -498,38 +501,34 @@ function renderHome() {
   const p = meta.pro
   const best = meta.bestPeakScore ? rankInline(scoreToRank(meta.bestPeakScore)) : '<span class="sys">—</span>'
   const blockBanner = meta.proBlockLives > 0
-    ? `<div class="mute-line on" style="margin-bottom:14px"><span>职业圈拉黑 · 还剩 ${meta.proBlockLives} 辈子</span><small>上次打职业时代练史被翻出来了。这几辈子不会再有教练私信你。</small></div>`
+    ? `<div class="mute-line on"><span>职业拉黑 · ${meta.proBlockLives} 辈子</span></div>`
     : ''
   const proNow = p.active
-    ? `<div class="section">
-        <div class="label">进行中的职业生涯</div>
-        <div style="margin:8px 0 4px">${teamBadge(teamOf(p.teamId))}</div>
-        <p class="tip" style="color:var(--bone)">${p.age} 岁 · 第 ${p.year + 1} 年 · 人气 ${fmt(p.fame)}</p>
-        <button class="btn btn-pro btn-gold" id="btn-pro" style="margin-top:10px">继续职业生涯</button>
+    ? `<div class="home-pro">
+        ${teamBadge(teamOf(p.teamId))}
+        <button class="btn btn-pro btn-gold" id="btn-pro">继续职业生涯</button>
       </div>`
     : ''
   const lastEnd = meta.lastEndingId ? ENDING_NAME[meta.lastEndingId] ?? meta.lastEndingId : ''
-  app.innerHTML = `<div class="reveal">
+  app.innerHTML = `<div class="reveal home">
     <h1>守望天梯人生</h1>
     ${blockBanner}
+    <div class="home-hud">
+      <div class="hud-cell"><i>人生</i><b class="num">${meta.runs}</b><small>${lastEnd || '尚未开局'}</small></div>
+      <div class="hud-cell"><i>峰值</i><b>${best}</b><small>职业 ${meta.scoutedTimes}</small></div>
+      <div class="hud-cell"><i>成就</i><b class="num">${achN}<em>/${ACHIEVEMENTS.length}</em></b><small>${meta.bestTalent ? TALENT_INFO[meta.bestTalent].name : '—'}</small></div>
+    </div>
     ${talentBar()}
     ${perkLine()}
-    <div class="dossier">
-      <div class="cell"><div class="label">人生</div><div class="num">${meta.runs}</div><small>${lastEnd ? `上一世：${lastEnd}` : '还没开始'}</small></div>
-      <div class="cell"><div class="label">历史最高</div><div style="font-family:var(--display);font-size:1.05rem;line-height:1.6">${best}</div><small>进过职业 ${meta.scoutedTimes} 次</small></div>
-      <div class="cell"><div class="label">成就</div><div class="num">${achN}<span style="font-size:0.5em;color:var(--bone-dim)"> / ${ACHIEVEMENTS.length}</span></div><small>${meta.bestTalent ? `最好天赋 ${TALENT_INFO[meta.bestTalent].name}` : ''}</small></div>
-    </div>
     ${proNow}
-    <div class="section" style="border-top:0;padding-top:6px">
-      <button class="btn btn-primary" id="btn-start" ${p.active ? 'disabled' : ''}>${p.active ? '先把职业生涯打完' : '开始一段人生 · 摇天赋'}</button>
-      <div class="grid-2">
+    <div class="home-actions">
+      <button class="btn btn-primary" id="btn-start" ${p.active ? 'disabled' : ''}>${p.active ? '先把职业生涯打完' : '开始一段人生'}</button>
+      <div class="grid-3">
         <button class="btn" id="btn-ach">成就</button>
         <button class="btn" id="btn-settings">设置</button>
-      </div>
-      <div class="grid-2">
         <button class="btn" id="btn-about">说明</button>
-        <button class="btn btn-danger" id="btn-wipe">删档</button>
       </div>
+      <button class="btn btn-ghost btn-wipe" id="btn-wipe">删档重来</button>
     </div>
   </div>`
   $('btn-start')!.onclick = startLife
