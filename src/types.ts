@@ -36,6 +36,8 @@ export interface Persona {
 export interface LogLine {
   cls: string
   text: string
+  /** 发生时的年龄（高光年表用） */
+  at?: number
 }
 
 export interface SeasonEnding {
@@ -199,6 +201,8 @@ export interface ProTitles {
   intl: number
   world: number
   worldCup: number
+  /** OWWC 世界杯冠军 */
+  owwc: number
   fmvp: number
 }
 
@@ -257,6 +261,8 @@ export interface ProState {
   level: number
   /** 生涯最高赛事高度 */
   peakLevel: number
+  /** 当前赛事高度下的具体赛事与名次，如「大锤杯 · 16 强」 */
+  lvNote: string
   /** 历史结局收集 */
   endings: Record<string, number>
 }

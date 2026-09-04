@@ -113,6 +113,30 @@ b { font-weight: 600; color: var(--bone); }
 .dossier .cell .label { margin-bottom: 2px; }
 .dossier .cell .num { font-size: 1.6rem; line-height: 1.1; }
 .dossier .cell small { display: block; color: var(--bone-dim); font-size: 0.72rem; margin-top: 2px; }
+.dossier.four { grid-template-columns: repeat(4, 1fr); padding-top: 14px; }
+.dossier.four .cell .num { font-size: 1.4rem; }
+@media (max-width: 520px) { .dossier.four { grid-template-columns: repeat(2, 1fr); } }
+
+/* 结算：他们怎么说（弹幕 / 贴吧 / 队友） */
+.crowd-row { display: grid; grid-template-columns: 5.2em 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--hair); font-size: 0.84rem; line-height: 1.6; }
+.crowd-row:last-child { border-bottom: 0; }
+.crowd-row .who { font-family: var(--display); font-size: 0.72rem; letter-spacing: 0.12em; color: var(--brass); padding-top: 2px; }
+.crowd-row .say { color: var(--bone); }
+.crowd-row .say::before { content: "「"; color: var(--bone-faint); }
+.crowd-row .say::after { content: "」"; color: var(--bone-faint); }
+
+/* 结算：年表 */
+.tl { position: relative; }
+.tl-row { display: grid; grid-template-columns: 3.2em 1fr; gap: 12px; padding: 6px 0; }
+.tl-row + .tl-row { border-top: 1px dashed var(--hair); }
+.tl-age { font-family: var(--numeral); font-size: 1.3rem; line-height: 1.1; color: var(--bone-dim); text-align: right; padding-top: 4px; }
+.tl-age small { display: block; font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.2em; color: var(--bone-faint); }
+.tl-body .hl { margin-bottom: 2px; }
+
+/* 结算：新成就大卡（隐藏 / 荣誉） */
+.ach-row.big { padding: 10px 12px; margin: 6px 0; border: 1px solid var(--hair-2); border-left: 2px solid var(--brass); background: rgba(255, 255, 255, 0.02); }
+.ach-row.big b { font-size: 1.05rem; }
+.ach-row.big.secret { border-left-color: #b8a1e6; background: linear-gradient(90deg, rgba(120, 90, 200, 0.16), transparent 70%); }
 
 .stat { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--bone-dim); }
 .stat b { color: var(--bone); font-weight: 500; }
@@ -169,7 +193,11 @@ b { font-weight: 600; color: var(--bone); }
 }
 .rank-hero .cn { font-family: var(--display); letter-spacing: 0.1em; }
 .rank-hero.bump { animation: bump 0.55s cubic-bezier(.2,.9,.3,1.4) both; }
+.rank-hero.bump-sm .lv-note { animation: bumpNote 0.4s ease-out both; }
 @keyframes bump { 0% { transform: scale(0.92); opacity: 0.4; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; } }
+@keyframes bumpNote { 0% { transform: translateY(-4px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+/* 赛事高度下的小字：具体赛事 · 名次 */
+.rank-hero .lv-note { display: block; font-family: var(--display); font-size: 0.34em; letter-spacing: 0.12em; color: var(--bone); margin-top: 4px; font-weight: 400; opacity: 0.85; }
 .rank-bronze { color: #b07a4a; }
 .rank-silver { color: #adb1b8; }
 .rank-gold { color: #d4af5a; }
@@ -206,10 +234,27 @@ b { font-weight: 600; color: var(--bone); }
 @keyframes shimmer { from { background-position: 0% 0; } to { background-position: 300% 0; } }
 
 /* 一根固定的条：各档占比 */
-.tal-stack { display: flex; height: 6px; background: var(--hair); overflow: hidden; }
+.tal-stack { display: flex; height: 10px; background: var(--hair); overflow: hidden; }
 .tal-stack i { display: block; height: 100%; background: currentColor; transition: width 0.6s ease; min-width: 1px; }
 .tal-stack i + i { margin-left: 1px; }
 .tal-stack .tal-4 { background: linear-gradient(90deg, #e8d7a8, #c9a55c 40%, #f0e4c0 70%, #c9a55c); -webkit-text-fill-color: initial; animation: none; }
+/* 加成那一截：成就 + 等级挪过来的概率，亮条 + 斜纹 + 呼吸光 */
+.tal-stack i.bonus { min-width: 0; margin-left: 0; position: relative; background: currentColor; filter: brightness(1.45) saturate(1.2); box-shadow: 0 0 10px currentColor; animation: bonusGlow 2.2s ease-in-out infinite; }
+.tal-stack i.bonus.tal-4 { background: linear-gradient(90deg, #fff3cf, #f0d68a 50%, #fff7dc); filter: none; box-shadow: 0 0 12px #f0d68a; }
+.tal-stack i.bonus::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(-55deg, transparent 0 3px, rgba(0, 0, 0, 0.28) 3px 5px); }
+@keyframes bonusGlow { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
+.tal-stack.animate i { transition: width 1.1s cubic-bezier(.2,.8,.2,1); }
+.tal-bonus-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 8px; font-size: 0.74rem; color: var(--bone-dim); flex-wrap: wrap; }
+.tal-bonus-line .tag { display: inline-flex; align-items: center; gap: 6px; color: var(--bone); }
+.tal-bonus-line .tag > i { width: 14px; height: 6px; background: linear-gradient(90deg, #fff3cf, #f0d68a); box-shadow: 0 0 8px #f0d68a; display: inline-block; }
+.tal-bonus-line .up, .grow-row .up, .grow-row .delta { color: var(--brass); }
+/* 结算：成长卡 */
+.grow-card { padding-top: 8px; }
+.grow-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 2px 0 10px; font-size: 0.86rem; color: var(--bone-dim); }
+.grow-row .lv-jump { font-family: var(--display); letter-spacing: 0.12em; font-size: 1.05rem; color: var(--bone); }
+.grow-row .arrow { margin: 0 8px; color: var(--bone-faint); }
+.grow-row .grow-hi b { font-size: 1.05rem; color: var(--bone); }
+.grow-row .delta { margin-left: 8px; font-size: 0.8rem; padding: 1px 6px; border: 1px solid var(--brass); }
 .tal-legend { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-family: var(--display); font-size: 0.7rem; letter-spacing: 0.18em; }
 .tal-legend .tal-4 { background: none; -webkit-text-fill-color: var(--brass); animation: none; }
 .exp-line { display: flex; align-items: center; gap: 10px; font-size: 0.74rem; color: var(--bone-dim); }
@@ -412,6 +457,26 @@ b { font-weight: 600; color: var(--bone); }
   opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ———— 成就横幅：头顶掉下来，多个排队 ———— */
+.ach-banner {
+  position: fixed; left: 50%; top: 14px; transform: translate(-50%, -24px); z-index: 45;
+  min-width: 240px; max-width: min(560px, calc(100% - 32px));
+  padding: 10px 22px 12px; text-align: center;
+  background: var(--ink-2); color: var(--bone); border: 1px solid var(--hair-2);
+  border-top: 2px solid var(--bone-dim);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  opacity: 0; transition: opacity 0.32s, transform 0.38s cubic-bezier(.2,.9,.3,1.2); pointer-events: none;
+}
+.ach-banner.show { opacity: 1; transform: translate(-50%, 0); }
+.ach-banner .ab-kicker { font-size: 0.62rem; letter-spacing: 0.32em; color: var(--bone-faint); }
+.ach-banner .ab-name { font-family: var(--display); font-size: 1.35rem; letter-spacing: 0.14em; margin: 3px 0 2px; }
+.ach-banner .ab-desc { font-size: 0.74rem; color: var(--bone-dim); letter-spacing: 0.04em; }
+.ach-banner.w2 { border-top-color: var(--brass); }
+.ach-banner.w2 .ab-kicker, .ach-banner.w2 .ab-name { color: var(--brass); }
+.ach-banner.w3 { border-top-color: #b8a1e6; background: linear-gradient(180deg, rgba(120, 90, 200, 0.22), var(--ink-2) 70%); box-shadow: 0 12px 48px rgba(120, 90, 200, 0.35); }
+.ach-banner.w3 .ab-kicker, .ach-banner.w3 .ab-name { color: #c9b6f2; text-shadow: 0 0 18px rgba(184, 161, 230, 0.6); }
+.ach-banner.w3 .ab-name { font-size: 1.6rem; }
 
 /* ———— 调试抽屉 ———— */
 .debug {

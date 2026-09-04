@@ -5,7 +5,7 @@ import {
   PRO_LEVELS, PRO_LEVEL_CLASS, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
-import { levelNeed, talentProbs } from './data/talent'
+import { levelNeed, talentProbs, talentShift } from './data/talent'
 import { achCount, beginLife, commitLife, createLife, currentShift, freshMeta, lifeStep, loadMeta, writeMeta } from './sim/life'
 import { clamp, scoreToRank } from './sim/rank'
 import { beginCareerRun, careerInProgress, exposureP, formProbs, proAge, proStep, retireNow, teamOf, teamRating } from './sim/pro'
@@ -19,15 +19,15 @@ if (typeof meta.manual !== 'boolean') meta.manual = false
 
 /* ———————————— 外观主题 ———————————— */
 const THEMES = [
-  { id: 'dossier', name: '档案', desc: '黑曜石 · 古铜 · 宋体（默认）' },
-  { id: 'arena', name: '赛场', desc: '深蓝黑 · 亮橙 · 粗黑体切角，转播包装味' },
+  { id: 'arena', name: '赛场', desc: '深蓝黑 · 亮橙 · 粗黑体切角，转播包装味（默认）' },
+  { id: 'dossier', name: '档案', desc: '黑曜石 · 古铜 · 宋体' },
   { id: 'paper', name: '报纸', desc: '米白纸 · 墨字 · 红章，亮色' },
   { id: 'terminal', name: '终端', desc: '黑底荧光绿 · 等宽 · 一切从简' },
   { id: 'neon', name: '霓虹', desc: '深紫 · 品红 + 青光 · 发光描边' },
 ]
 function currentTheme() {
   const q = new URLSearchParams(location.search).get('theme')
-  return (q && THEMES.some((t) => t.id === q)) ? q : (meta.theme ?? 'dossier')
+  return (q && THEMES.some((t) => t.id === q)) ? q : (meta.theme ?? 'arena')
 }
 function applyTheme() {
   document.documentElement.dataset.theme = currentTheme()
@@ -111,6 +111,61 @@ function toast(text: string) {
   window.setTimeout(() => { t.classList.remove('show'); window.setTimeout(() => t.remove(), 400) }, 4200)
 }
 
+/* ———————————— 成就横幅：头顶弹出，多个排队连续弹；隐藏 > 荣誉 > 普通 ———————————— */
+
+type AchLike = { id: string; name: string; desc: string; honor?: boolean; secret?: boolean }
+const achWeight = (a: AchLike) => (a.secret ? 3 : a.honor ? 2 : 1)
+const bannerQueue: AchLike[] = []
+let bannerBusy = false
+let bannerShownLife = 0
+let bannerShownPro = 0
+
+function queueBanner(list: AchLike[]) {
+  if (!list.length) return
+  bannerQueue.push(...list)
+  // 权重高的先出：隐藏 > 荣誉 > 普通
+  bannerQueue.sort((a, b) => achWeight(b) - achWeight(a))
+  if (!bannerBusy) nextBanner()
+}
+
+function nextBanner() {
+  const a = bannerQueue.shift()
+  if (!a) { bannerBusy = false; return }
+  bannerBusy = true
+  document.getElementById('ach-banner')?.remove()
+  const w = achWeight(a)
+  const el = document.createElement('div')
+  el.id = 'ach-banner'
+  el.className = `ach-banner w${w}`
+  el.innerHTML = `<div class="ab-kicker">${w === 3 ? '隐藏成就' : w === 2 ? '荣誉' : '成就'}</div><div class="ab-name">${a.name}</div><div class="ab-desc">${a.desc}</div>`
+  document.body.appendChild(el)
+  window.setTimeout(() => el.classList.add('show'), 10)
+  const stay = fastForward ? 700 : w === 3 ? 3400 : w === 2 ? 2600 : 1900
+  window.setTimeout(() => {
+    el.classList.remove('show')
+    window.setTimeout(() => { el.remove(); nextBanner() }, 380)
+  }, stay)
+}
+
+/** 人生里新解锁的成就 → 横幅 */
+function bannerFromLife() {
+  if (!life) return
+  if (bannerShownLife < life.newAchievements.length) {
+    queueBanner(life.newAchievements.slice(bannerShownLife).map((id) => ACH_MAP[id]).filter(Boolean))
+    bannerShownLife = life.newAchievements.length
+  }
+}
+
+/** 职业里新解锁的成就（高光栏里的「成就【x】」）→ 横幅 */
+function bannerFromPro() {
+  const hl = meta.pro.highlights
+  if (bannerShownPro < hl.length) {
+    const list = hl.slice(bannerShownPro).filter((l) => l.cls === 'ach').map((l) => ACHIEVEMENTS.find((a) => a.name === l.text.replace(/^成就【|】$/g, ''))).filter((a): a is AchLike => !!a)
+    queueBanner(list)
+    bannerShownPro = hl.length
+  }
+}
+
 const ENDING_NAME: Record<string, string> = {
   banned: '永封', landed: '上岸',
   lifetime_ban: '终身禁赛', fix_ruin: '那笔钱', hell_return: '地狱归来', quit: '回家', legend: '一代传奇',
@@ -125,23 +180,60 @@ for (const m of Object.keys(MAJOR_NAME) as Array<keyof typeof MAJOR_NAME>) {
 const dirtyN = (g: LifeState) => g.dirty.boostJobs + g.dirty.hires + g.dirty.cheatSeasons
 
 /** 经验行：Lv · 细条 */
-function expLine() {
-  const g = meta.growth
-  const need = levelNeed(g.level)
-  return `<div class="exp-line"><span class="lv">Lv <b class="num">${g.level}</b></span><div class="exp-bar"><i style="width:${clamp((g.exp / need) * 100, 0, 100)}%"></i></div><span class="num tip">${g.exp}/${need}</span></div>`
+function expLine(level = meta.growth.level, exp = meta.growth.exp) {
+  const need = levelNeed(level)
+  return `<div class="exp-line"><span class="lv">Lv <b class="num">${level}</b></span><div class="exp-bar"><i style="width:${clamp((exp / need) * 100, 0, 100)}%"></i></div><span class="num tip">${exp}/${need}</span></div>`
+}
+
+const pct1 = (n: number) => (Math.round(n * 10) / 10).toFixed(1)
+
+/**
+ * 天赋概率条：一根固定的条，各档占比。
+ * 天才 / 怪物分成「底盘」和「加成」两层：加成是成就 + 等级挪过来的那一截，画成亮条，一眼看到多了多少。
+ * 传 from 时，条先按旧概率画，下一帧滑到新概率（结算页用）。
+ */
+function talentStack(shift: number, from?: number) {
+  const base = talentProbs(0)
+  const now = talentProbs(shift)
+  const old = from == null ? now : talentProbs(from)
+  const seg = (cls: string, w: number, w0: number, title: string) => `<i class="${cls}" data-w="${w}" style="width:${w0}%" title="${title}"></i>`
+  let html = ''
+  for (const t of TALENT_ORDER) {
+    const ti = TALENT_INFO[t]
+    const bonus = Math.max(0, now[t] - base[t])
+    if (t === 'genius' || t === 'monster') {
+      const b0 = Math.max(0, old[t] - base[t])
+      html += seg(ti.cls, Math.min(now[t], base[t]), Math.min(old[t], base[t]), `${ti.name} ${pct1(now[t])}% · ${ti.range}`)
+      html += seg(`${ti.cls} bonus`, bonus, b0, `${ti.name} 加成 +${pct1(bonus)}%（成就 + 等级）`)
+    } else html += seg(ti.cls, now[t], old[t], `${ti.name} ${pct1(now[t])}% · ${ti.range}`)
+  }
+  return `<div class="tal-stack${from != null ? ' animate' : ''}">${html}</div>`
+}
+
+/** 结算页：把 data-w 目标宽度滑过去 */
+function animateStacks() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll<HTMLElement>('.tal-stack.animate i[data-w]').forEach((i) => { i.style.width = `${i.dataset.w}%` })
+  }))
 }
 
 /* ———————————— 首页 ———————————— */
 
-/** 下辈子天赋：一根固定的条，各档占比；天才 / 怪物随成就 + 等级慢慢变宽 */
+/** 下辈子天赋：固定条 + 加成层；右侧写清楚这一级加了多少、下一级再加多少 */
 function talentBar() {
-  const probs = talentProbs(currentShift(meta))
-  const segs = TALENT_ORDER.map((t) => `<i class="${TALENT_INFO[t].cls}" style="width:${probs[t]}%" title="${TALENT_INFO[t].name} ${probs[t]}% · ${TALENT_INFO[t].range}"></i>`).join('')
+  const shift = currentShift(meta)
+  const probs = talentProbs(shift)
+  const hi = probs.genius + probs.monster
   const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${TALENT_INFO[t].name}</span>`).join('')
+  const capped = shift >= 15
   return `<div class="section" style="padding-bottom:10px">
     <div class="row" style="border-bottom:0;padding:0 0 8px"><span class="label" style="margin:0">下辈子投胎</span>${expLine()}</div>
-    <div class="tal-stack">${segs}</div>
+    ${talentStack(shift)}
     <div class="tal-legend">${legend}</div>
+    <div class="tal-bonus-line">
+      <span class="tag"><i></i>天才 + 怪物 <b class="num">${pct1(hi)}%</b>${shift > 0 ? `<span class="up">（含加成 +${pct1(shift)}%）</span>` : ''}</span>
+      <span class="tip">${capped ? '加成已到顶' : `Lv ${meta.growth.level} · 每升一级或多一个成就，再挪 +0.1%`}</span>
+    </div>
   </div>`
 }
 
@@ -298,6 +390,7 @@ function startLife() {
   commitResult = null
   life = createLife(meta)
   writeMeta(meta) // debugTalent 已消费
+  bannerShownLife = 0
   beginLife(meta, life)
   renderLife()
   tickLife()
@@ -376,6 +469,7 @@ function tickLife() {
   const r = lifeStep()
   flushLogs()
   refreshHud()
+  bannerFromLife()
   if (r === 'done') { stopTimer(); timer = window.setTimeout(renderLifeSettle, 1400); return }
   // 一行是一季，比职业一场慢一点
   if (!meta.manual) timer = window.setTimeout(tickLife, fastForward ? intervalMs() : intervalMs() * 2.5)
@@ -383,11 +477,97 @@ function tickLife() {
 
 /* ———————————— 人生结算 ———————————— */
 
-function expCard(exp: number, ups: number) {
-  return `<div class="section" style="padding-top:8px">
-    <div class="row" style="border-bottom:0;padding:0 0 8px"><span class="label" style="margin:0">经验 <b class="num" style="color:var(--brass)">+${exp}</b>${ups ? ` <span class="win">升 ${ups} 级</span>` : ''}</span>${expLine()}</div>
+/**
+ * 结算里的成长卡：经验 +N、升级，然后是下辈子的天赋条从旧概率滑到新概率。
+ * 天才 / 怪物的加成那一截变宽 = 这辈子攒下来的东西。
+ */
+function expCard(exp: number, ups: number, achBefore: number) {
+  const levelBefore = meta.growth.level - ups
+  const shiftBefore = talentShift(achBefore, levelBefore)
+  const shiftNow = currentShift(meta)
+  const pb = talentProbs(shiftBefore)
+  const pn = talentProbs(shiftNow)
+  const hiB = pb.genius + pb.monster
+  const hiN = pn.genius + pn.monster
+  const delta = Math.round((hiN - hiB) * 10) / 10
+  const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${TALENT_INFO[t].name}</span>`).join('')
+  const lvHtml = ups
+    ? `<span class="lv-jump"><span class="num">Lv ${levelBefore}</span><span class="arrow">→</span><span class="num up">Lv ${meta.growth.level}</span></span>`
+    : `<span class="lv-jump"><span class="num">Lv ${meta.growth.level}</span></span>`
+  return `<div class="section grow-card">
+    <div class="row" style="border-bottom:0;padding:0 0 8px">
+      <span class="label" style="margin:0">经验 <b class="num" style="color:var(--brass)">+${exp}</b>${ups ? ` <span class="win">升 ${ups} 级</span>` : ''}</span>
+      ${expLine()}
+    </div>
+    <div class="grow-row">
+      ${lvHtml}
+      <span class="grow-hi">天才 + 怪物 <b class="num">${pct1(hiB)}%</b><span class="arrow">→</span><b class="num ${delta > 0 ? 'up' : ''}">${pct1(hiN)}%</b>${delta > 0 ? `<span class="delta">+${pct1(delta)}%</span>` : ''}</span>
+    </div>
+    ${talentStack(shiftNow, shiftBefore)}
+    <div class="tal-legend">${legend}</div>
+    <div class="tip" style="margin-top:8px">${delta > 0 ? '亮的那一截是加成：成就和等级挪过来的概率，下辈子摇天赋直接算。' : shiftNow >= 15 ? '加成已到顶（+15%）。' : '这辈子没升级、没新成就，下辈子的概率不变。'}</div>
   </div>`
 }
+
+/** 路人评论：弹幕 / 贴吧 / 队友视角的几句话，按这辈子的数据挑 */
+function crowdTalk(g: LifeState, toPro: boolean): Array<{ who: string; text: string }> {
+  const peak = scoreToRank(g.peakScore)
+  const m = peak.major
+  const pool: Array<{ who: string; text: string; w: number }> = []
+  const add = (who: string, text: string, w = 1) => pool.push({ who, text, w })
+  const hi = m === 'gm' || m === 'champ' || m === 'top'
+  const low = m === 'bronze' || m === 'silver' || m === 'gold'
+  if (toPro) add('弹幕', '以后看比赛能说「这人我加过好友」了。', 3)
+  if (g.banned) { add('官方公告', '账号因使用第三方程序被永久封禁。', 3); add('你队友', '就说他有问题，那枪法根本不像人。', 2) }
+  if (hi) { add('贴吧老哥', '这段位还打天梯？去打职业啊。', 2); add('路人', '宗师大佬带带我，我可以当挂件。') }
+  if (m === 'top') add('主播', '500 强榜上有个眼熟的 ID……哦是你。', 2)
+  if (low) { add('贴吧老哥', '黄金以下都是一个段位，别争了。'); add('你队友', '你是不是用脚打的？') }
+  if (g.stuckTotal >= 8) add('弹幕', `X1·99 卡了 ${g.stuckTotal} 季，实力就在那儿了，别挣扎。`, 2)
+  if (g.stuckTotal === 0 && g.season >= 12) add('路人', '一次墙没卡过？账号租出去了吧。', 2)
+  if (g.dirty.hires) add('贴吧老哥', '陪玩上的分早晚掉回去，这个我熟。')
+  if (g.dirty.boostJobs) add('买家', '师傅，号什么时候能打完？我还等着炫。')
+  if (g.fans >= 50000) add('粉丝', '开播吧，我们真的会看。', 2)
+  else if (g.fans >= 5000) add('粉丝', '你那个集锦我转了三遍。')
+  if (g.talent === 'monster' || g.talent === 'genius') add('你队友', '这就是天赋碾压，我练十年也打不出这枪。', 2)
+  if (g.talent === 'barrel') add('你队友', '操作是真的没有，意识倒是挺好。')
+  if (g.injured) add('你妈', '手都这样了还打？')
+  if (g.cash < 0) add('你妈', `欠着 ${fmt(-g.cash)}，游戏删了没？`, 2)
+  if (g.ending?.id.startsWith('cloudmud')) add('路人', '差一分上大段。这游戏是不是故意的？', 2)
+  if (g.ending?.id.startsWith('quit')) add('你队友', '删了好。删了就是上岸。')
+  if (g.tally.verified) add('官方', '经人工复核，该账号无违规行为。', 3)
+  if (g.hidden === 'late') add('弹幕', '这人越老越妖，什么情况。')
+  if (!pool.length) add('路人', '路过，什么都没发生。')
+  // 权重高的先挑，最多三条，其余随机
+  pool.sort((a, b) => b.w - a.w || Math.random() - 0.5)
+  return pool.slice(0, 3).map(({ who, text }) => ({ who, text }))
+}
+
+/** 年表：高光按年龄分组 */
+function lifeTimeline(g: LifeState) {
+  const groups = new Map<number, LogLine[]>()
+  for (const l of g.highlights) {
+    const at = l.at ?? g.age
+    if (!groups.has(at)) groups.set(at, [])
+    groups.get(at)!.push(l)
+  }
+  if (!groups.size) return ''
+  const rows = [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([age, ls]) => `<div class="tl-row">
+    <div class="tl-age"><span class="num">${age}</span><small>岁</small></div>
+    <div class="tl-body">${ls.slice(0, 4).map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>
+  </div>`).join('')
+  return `<div class="section"><div class="label">年表</div><div class="tl">${rows}</div></div>`
+}
+
+/** 新成就：隐藏 > 荣誉 > 普通排前面，隐藏和荣誉做大卡 */
+function newAchCards(list: AchLike[]) {
+  if (!list.length) return ''
+  const sorted = [...list].sort((a, b) => achWeight(b) - achWeight(a))
+  return `<div class="section"><div class="label">新成就 · ${sorted.length}</div>
+    ${sorted.map((a) => { const w = achWeight(a); return `<div class="ach-row got ${w === 3 ? 'secret big' : w === 2 ? 'pro big' : ''}"><b>${a.name}</b><span>${a.desc}</span></div>` }).join('')}
+  </div>`
+}
+
+let commitAchBefore = 0
 
 function renderLifeSettle() {
   if (!life) return
@@ -396,6 +576,7 @@ function renderLifeSettle() {
   fastForward = false
   if (!committed) {
     committed = true
+    commitAchBefore = achCount(meta)
     commitResult = commitLife(g, meta)
     writeMeta(meta)
   }
@@ -404,13 +585,13 @@ function renderLifeSettle() {
   const peak = scoreToRank(g.peakScore)
   const real = scoreToRank(g.peakMmr)
   const newAch = g.newAchievements.map((id) => ACH_MAP[id]).filter(Boolean)
-  const big = (l: LogLine) => l.cls === 'ending' || l.cls === 'ban' || l.cls === 'talent'
-  const hl = [...g.highlights.filter(big), ...g.highlights.filter((l) => !big(l))].slice(0, 12)
+  const talk = crowdTalk(g, toPro)
+  const years = g.age - START_AGE
 
   const head = toPro
     ? `<div class="sub" style="margin:0 0 6px">试训通过 · ${g.age} 岁</div>
        <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">进入职业生涯</span></div>`
-    : `<div class="sub" style="margin:0 0 6px">这一辈子 · ${g.age} 岁${g.banned ? '永封' : '退坑'}</div>
+    : `<div class="sub" style="margin:0 0 6px">${START_AGE} → ${g.age} 岁 · 打了 ${years} 年 · ${g.banned ? '<span class="ban">永封</span>' : '退坑'}</div>
        <div class="rank-hero" style="text-align:center;font-size:2.8rem">${rankHtml(peak)}</div>`
 
   app.innerHTML = `<div class="reveal">
@@ -421,11 +602,6 @@ function renderLifeSettle() {
       <span>${g.season} 季 · ${fmt(g.gamesTotal)} 把</span>
     </div>
     <div class="rule-brass"></div>
-    <div class="dossier">
-      <div class="cell"><div class="label">现金</div><div class="num ${g.cash < 0 ? 'lose' : ''}">${fmt(g.cash)}</div><small>人气 ${fmt(g.fans)}</small></div>
-      <div class="cell"><div class="label">卡墙</div><div class="num">${g.stuckTotal}</div><small>季</small></div>
-      <div class="cell"><div class="label">阶段</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5">${STAGE_INFO[g.stage].name}</div><small>${dirtyN(g) ? `黑历史 ${dirtyN(g)}` : '干净'}</small></div>
-    </div>
     ${toPro ? `<div class="section ending-card">
         <h2>有人找你</h2>
         <div class="tip">${g.age} 岁 · ${rankInline(g.rank)}</div>
@@ -437,18 +613,29 @@ function renderLifeSettle() {
         <div class="tip">${g.ending.rankLabel}</div>
         ${g.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
       </div>` : ''}
-    ${newAch.length ? `<div class="section"><div class="label">新成就</div>${newAch.map((a) => `<div class="ach-row got ${a.honor ? 'pro' : ''}"><b>${a.name}</b><span>${a.desc}</span></div>`).join('')}</div>` : ''}
-    ${commitResult ? expCard(commitResult.exp, commitResult.ups) : ''}
+    <div class="dossier four">
+      <div class="cell"><div class="label">现金</div><div class="num ${g.cash < 0 ? 'lose' : ''}">${fmt(g.cash)}</div><small>人气 ${fmt(g.fans)}</small></div>
+      <div class="cell"><div class="label">卡墙</div><div class="num">${g.stuckTotal}</div><small>季</small></div>
+      <div class="cell"><div class="label">黑历史</div><div class="num ${dirtyN(g) ? 'warn' : ''}">${dirtyN(g)}</div><small>${dirtyN(g) ? '背调会翻出来' : '干净'}</small></div>
+      <div class="cell"><div class="label">阶段</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5">${STAGE_INFO[g.stage].name}</div><small>${g.persona.name}</small></div>
+    </div>
+    <div class="section crowd">
+      <div class="label">他们怎么说</div>
+      ${talk.map((c) => `<div class="crowd-row"><span class="who">${c.who}</span><span class="say">${c.text}</span></div>`).join('')}
+    </div>
+    ${newAchCards(newAch)}
+    ${commitResult ? expCard(commitResult.exp, commitResult.ups, commitAchBefore) : ''}
     <div class="section" style="padding-bottom:6px">
       ${toPro
         ? '<button class="btn btn-pro btn-gold" id="go-pro">进入职业生涯</button>'
         : '<button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>'}
       <button class="btn" id="home">回首页</button>
     </div>
-    ${hl.length ? `<div class="section"><div class="label">这辈子的高光</div>${hl.map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
+    ${lifeTimeline(g)}
     <div class="section"><div class="label">人生</div><div class="log-box" id="log-box" style="max-height:40vh"></div></div>
   </div>`
   appendTo('log-box', g.logs)
+  animateStacks()
   $('again')?.addEventListener('click', startLife)
   $('go-pro')?.addEventListener('click', () => { life = null; startProRun() })
   $('home')!.onclick = () => { life = null; renderHome() }
@@ -501,7 +688,7 @@ function renderPro() {
   const p = meta.pro
   const top = pageTop('职业生涯', renderHome)
   const t = teamOf(p.teamId)
-  const titles = `地区冠军 ${p.titles.regional} · 国际赛前二 ${p.titles.intl}${p.titles.world ? ` · 国际赛冠军 ${p.titles.world}` : ''}${p.titles.fmvp ? ` · FMVP ${p.titles.fmvp}` : ''}${p.titles.worldCup ? ` · 国家队 ${p.titles.worldCup}` : ''}`
+  const titles = `地区冠军 ${p.titles.regional} · 国际赛前二 ${p.titles.intl}${p.titles.world ? ` · 国际赛冠军 ${p.titles.world}` : ''}${p.titles.fmvp ? ` · FMVP ${p.titles.fmvp}` : ''}${p.titles.worldCup ? ` · 国家队 ${p.titles.worldCup}` : ''}${p.titles.owwc ? ` · 世界杯冠军 ${p.titles.owwc}` : ''}`
   const d = meta.dirty
   const expo = exposureP(meta)
   const dirtyText = d.boostJobs + d.hires + d.cheatSeasons + p.fixes === 0
@@ -554,12 +741,14 @@ function proHud() {
   set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁</span><span>${p.stageAt ? `Stage <span class="num">${p.stageAt}</span> / 3` : '年初'}</span><span>峰值 <span class="${PRO_LEVEL_CLASS[p.peakLevel]}">${PRO_LEVELS[p.peakLevel]}</span></span>`)
   const lvEl = $('pro-level')
   if (lvEl) {
-    const html = `<span class="${PRO_LEVEL_CLASS[p.level]}"><span class="cn">${PRO_LEVELS[p.level]}</span></span>`
+    // 大字是赛事高度（像段位），小字是具体赛事与名次：「社区赛 · 大锤杯 16 强」
+    const html = `<span class="${PRO_LEVEL_CLASS[p.level]}"><span class="cn">${PRO_LEVELS[p.level]}</span></span><small class="lv-note">${p.lvNote || ''}</small>`
     if (lvEl.innerHTML !== html) {
+      const lvChanged = !lvEl.innerHTML.includes(`>${PRO_LEVELS[p.level]}<`)
       lvEl.innerHTML = html
-      lvEl.classList.remove('bump')
+      lvEl.classList.remove('bump', 'bump-sm')
       void lvEl.offsetWidth
-      lvEl.classList.add('bump')
+      lvEl.classList.add(lvChanged ? 'bump' : 'bump-sm')
     }
   }
   set('pro-form', `${formBadge(p.form)}&nbsp;&nbsp;<span class="tip">实力 <span class="num">${p.skill}</span>${t ? ` · ${t.partner ? '合作战队' : '普通队'} · 底子 ${teamRating(t)}` : ''}</span>`)
@@ -577,6 +766,7 @@ function startProRun() {
   const p = meta.pro
   proSavedYear = p.year
   beginCareerRun(meta)
+  bannerShownPro = p.highlights.length
   app.innerHTML = `
     <div class="top">
       <h2 id="pro-title"></h2>
@@ -625,6 +815,7 @@ function tickPro() {
   const r = proStep()
   proLogs()
   proHud()
+  bannerFromPro()
   // 滚过一年就落盘一次：刷新只丢当前这一年
   if (meta.pro.year !== proSavedYear) { proSavedYear = meta.pro.year; writeMeta(meta) }
   if (r === 'done') { stopProTimer(); proTimer = window.setTimeout(renderProSettle, 1200); return }
@@ -638,7 +829,7 @@ function renderProSettle() {
   fastForward = false
   const p = meta.pro
   writeMeta(meta)
-  const newAch = p.highlights.filter((l) => l.cls === 'ach').map((l) => l.text.replace(/^成就【|】$/g, ''))
+  const newAch = p.highlights.filter((l) => l.cls === 'ach').map((l) => ACHIEVEMENTS.find((a) => a.name === l.text.replace(/^成就【|】$/g, ''))).filter((a): a is AchLike => !!a)
   const big = (l: LogLine) => l.cls === 'ending' || l.cls === 'ban' || l.cls === 'ach'
   const hl = [...p.highlights.filter(big), ...p.highlights.filter((l) => !big(l))].slice(0, 14)
   const titles = [
@@ -647,6 +838,7 @@ function renderProSettle() {
     p.titles.world ? `国际赛冠军 ×${p.titles.world}` : '',
     p.titles.fmvp ? `FMVP ×${p.titles.fmvp}` : '',
     p.titles.worldCup ? `国家队 ×${p.titles.worldCup}` : '',
+    p.titles.owwc ? `世界杯冠军 ×${p.titles.owwc}` : '',
   ].filter(Boolean).join(' · ')
   app.innerHTML = `<div class="reveal">
     <div class="sub" style="margin:0 0 6px">职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁</div>
@@ -663,8 +855,8 @@ function renderProSettle() {
         ${p.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
       </div>` : ''}
     ${titles ? `<div class="section"><div class="label">荣誉</div><p class="tip" style="color:var(--brass)">${titles}</p></div>` : ''}
-    ${newAch.length ? `<div class="section"><div class="label">新成就</div>${newAch.map((name) => { const a = ACHIEVEMENTS.find((x) => x.name === name); return `<div class="ach-row got pro"><b>${name}</b><span>${a?.desc ?? ''}</span></div>` }).join('')}</div>` : ''}
-    ${p.endExp != null ? expCard(p.endExp, p.endUps ?? 0) : ''}
+    ${newAchCards(newAch)}
+    ${p.endExp != null ? expCard(p.endExp, p.endUps ?? 0, achCount(meta) - newAch.length) : ''}
     <div class="section" style="padding-bottom:6px">
       <button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>
       <button class="btn" id="home">回首页</button>
@@ -674,6 +866,7 @@ function renderProSettle() {
     <div class="section"><div class="label">赛程</div><div class="log-box" id="pro-log" style="max-height:40vh"></div></div>
   </div>`
   appendTo('pro-log', p.log)
+  animateStacks()
   $('again')?.addEventListener('click', startLife)
   $('home')!.onclick = renderHome
   mountDebug()
@@ -699,7 +892,7 @@ function renderAbout() {
     </div>
     <div class="section">
       <div class="label">被发掘</div>
-      <p class="tip" style="color:var(--bone)">${SCOUT_MAX_AGE} 岁前打到宗师以上，有概率收到青训教练的私信。试训前有背调，账号干净才好过。通过就单开一段职业生涯：OWCS 中国赛区，从网吧赛打到世界总决赛，签约、转会、板凳、审查、热搜全是事件，不用你点。</p>
+      <p class="tip" style="color:var(--bone)">${SCOUT_MAX_AGE} 岁前打到宗师以上，有概率收到青训教练的私信。试训前有背调，账号干净才好过。通过就单开一段职业生涯：OWCS 中国赛区，从网吧赛打到 EWC 和世界总决赛，签约、转会、板凳、审查、热搜全是事件，不用你点。履历有保底：打过 OWCS 就不会再回杯赛，拿过赛区冠亚军直接常规赛。</p>
     </div>
     <div class="section">
       <div class="label">黑市</div>

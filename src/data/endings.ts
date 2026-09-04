@@ -224,7 +224,7 @@ export function buildProEnding(meta: MetaSave, reason: ProEndReason): SeasonEndi
   const t = p.titles
   const team = TEAMS.find((x) => x.id === p.teamId)?.name ?? ''
   const label = `${p.age} 岁 · ${p.yearsPlayed} 年${team ? ` · ${team}` : ''}`
-  const record = `地区冠军 ${t.regional} · 国际赛 ${t.intl} · 世界冠军 ${t.world}${t.fmvp ? ` · FMVP ${t.fmvp}` : ''}${t.worldCup ? ` · 国家队 ${t.worldCup}` : ''}`
+  const record = `地区冠军 ${t.regional} · 国际赛 ${t.intl} · 世界冠军 ${t.world}${t.fmvp ? ` · FMVP ${t.fmvp}` : ''}${t.worldCup ? ` · 国家队 ${t.worldCup}` : ''}${t.owwc ? ` · 世界杯冠军 ${t.owwc}` : ''}`
   const after = afterlife(meta).text
 
   if (reason === 'lifetime_ban') {

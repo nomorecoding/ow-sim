@@ -182,7 +182,7 @@ export function createLife(meta: MetaSave): LifeState {
   }
   g.logs.push({ cls: 'sys', text: `${START_AGE} 岁，第一次打排位。人设【${persona.name}】——${persona.tagline}。${rich ? '家里有钱，网费不是问题。' : ''}` })
   g.logs.push({ cls: 'talent', text: `天赋【${ti.name}】。${ti.range}。没人告诉你，你得自己打出来。${rerolled ? '（成就奖励：摇了两次，取高）' : ''}` })
-  g.highlights.push({ cls: 'talent', text: `天赋【${ti.name}】` })
+  g.highlights.push({ cls: 'talent', text: `天赋【${ti.name}】`, at: START_AGE })
   if (talent.tier === 'something') unlock(g, 'talent_something')
   if (talent.tier === 'genius') unlock(g, 'talent_genius')
   if (talent.tier === 'monster') unlock(g, 'talent_monster')
@@ -190,7 +190,7 @@ export function createLife(meta: MetaSave): LifeState {
   if (hidden) {
     const hi = HIDDEN_INFO[hidden]
     g.logs.push({ cls: 'hidden', text: `【隐藏天赋】${hi.name}。${hi.line}` })
-    g.highlights.push({ cls: 'hidden', text: `隐藏天赋【${hi.name}】` })
+    g.highlights.push({ cls: 'hidden', text: `隐藏天赋【${hi.name}】`, at: START_AGE })
     unlock(g, `hidden_${hidden}`)
   }
   return g
@@ -218,11 +218,11 @@ export function lifeStep(): Tick | 'done' {
 /* ———————————— 工具 ———————————— */
 
 function L(g: LifeState, cls: string, text: string): LogLine {
-  const l = { cls, text }
+  const l: LogLine = { cls, text, at: g.age }
   g.logs.push(l)
   return l
 }
-function H(g: LifeState, l: LogLine) { g.highlights.push(l) }
+function H(g: LifeState, l: LogLine) { if (l.at == null) l.at = g.age; g.highlights.push(l) }
 
 function wallOf(mmr: number): { score: number; into: MajorTier } | null {
   const m = majorOf(mmr)

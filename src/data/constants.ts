@@ -222,19 +222,23 @@ export const STAGE_PRIZE = [0, 60000, 30000, 15000, 8000, 3000, 1500, 0, 0]
 /** 国际赛名次奖金（人均分成，基准）× 各站倍数 */
 export const INTL_PRIZE = [0, 300000, 150000, 80000, 80000, 40000, 40000, 20000, 20000]
 export const INTL_MULT: Record<1 | 2 | 3, number> = { 1: 0.6, 2: 1.2, 3: 1.5 }
-export const INTL_NAME: Record<1 | 2 | 3, string> = { 1: 'Champions Clash', 2: '年中冠军赛 · EWC', 3: '世界总决赛' }
+export const INTL_NAME: Record<1 | 2 | 3, string> = { 1: 'Champions Clash', 2: 'EWC', 3: 'OWCS 总决赛' }
 export const INTL_PLACE: Record<1 | 2 | 3, string> = { 1: '首尔', 2: '利雅得', 3: '斯德哥尔摩' }
 
-/** 赛事高度：职业页的「段位」。颜色借段位色，一格一格往上跳 */
+/** 赛事高度：职业页的「段位」。颜色借段位色，一格一格往上跳。EWC 和世界总决赛同一级 */
 export const PRO_LEVELS = ['网吧赛', '社区赛', '城市赛', '预选赛', '常规赛', '季后赛', '国际赛', '总决赛', '世界冠军', 'FMVP'] as const
 export const PRO_LEVEL_CLASS: string[] = MAJOR_ORDER.map((m) => RANK_COLOR_CLASS[m])
 export const LV = { netbar: 0, community: 1, city: 2, qualifier: 3, regular: 4, playoffs: 5, intl: 6, worlds: 7, champion: 8, fmvp: 9 } as const
-/** 杯赛（低底子的队要先从这儿打出来）：名字、对手底子区间、奖金区间 */
-export const CUPS: Array<{ lv: number; names: string[]; opp: [number, number]; prize: [number, number]; fame: number }> = [
-  { lv: 0, names: ['网鱼杯', '网咖联赛', '街电杯'], opp: [24, 46], prize: [500, 2000], fame: 200 },
-  { lv: 1, names: ['薯条杯', '铁锤杯', '守望者杯'], opp: [34, 58], prize: [2000, 6000], fame: 800 },
-  { lv: 2, names: ['成都站', '上海站', '广州站', '西安站', '武汉站'], opp: [44, 68], prize: [5000, 15000], fame: 2000 },
+/** 杯赛（低底子的队要先从这儿打出来）：名字、对手底子区间、冠军奖金、人气 */
+export const CUPS: Array<{ lv: number; names: string[]; opp: [number, number]; prize: number; fame: number }> = [
+  { lv: 0, names: ['网鱼杯', '网咖联赛', '街电杯', '雷蛇网吧赛'], opp: [22, 46], prize: 2000, fame: 200 },
+  { lv: 1, names: ['大锤杯', '薯条杯', '守望者杯', '花村杯'], opp: [32, 58], prize: 6000, fame: 800 },
+  { lv: 2, names: ['成都站', '上海站', '广州站', '西安站', '武汉站', '杭州站'], opp: [42, 68], prize: 15000, fame: 2000 },
 ]
+/** 杯赛名次（16 强淘汰赛）：打到第几轮 */
+export const CUP_PLACE = ['16 强', '8 强', '4 强', '亚军', '冠军'] as const
+/** OWWC 世界杯（娱乐性质）：中国队一路能打到哪 */
+export const OWWC_PLACE = ['小组出局', '8 强', '4 强', '亚军', '冠军'] as const
 
 /** 职业模式：可主动退役年龄、身体开始下滑年龄、强制收官年龄 */
 export const PRO_RETIRE_MIN_AGE = 22

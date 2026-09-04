@@ -173,7 +173,7 @@ export function pickEvent(g: LifeState, pool: LifeEvent[], used: Set<string>): L
       g.tally[e.id] = (g.tally[e.id] ?? 0) + 1
       const text = e.run(g)
       const line = { cls: e.cls ?? 'ev', text }
-      if (e.hl) g.highlights.push(line)
+      if (e.hl) g.highlights.push({ ...line, at: g.age })
       return line
     }
   }

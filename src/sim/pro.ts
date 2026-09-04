@@ -5,7 +5,7 @@
  */
 import type { Form, HiddenTalent, LogLine, MetaSave, ProOffer, ProState, StageResult, TalentTier, Team } from '../types'
 import {
-  CUPS, EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, HIDDEN_INFO, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, LV, MATE_NAMES,
+  CUPS, CUP_PLACE, EXPOSED_BLOCK_LIVES, EXPOSED_SUSPEND, EXP_PRO, FMVP_P, FORM_INFO, FORM_ORDER, HELL_DEBT, HELL_RETURN_INCOME, HIDDEN_INFO, INTL_MULT, INTL_NAME, INTL_PLACE, INTL_PRIZE, LV, MATE_NAMES, OWWC_PLACE,
   PRO_DECLINE_AGE, PRO_FORCE_RETIRE_AGE, PRO_GROWTH_CAP, PRO_IDLE_EXPENSE, PRO_LEVELS, PRO_RETIRE_MIN_AGE,
   SALARY, STAGE_PRIZE, TALENT_PRO_BONUS, TEAMS,
 } from '../data/constants'
@@ -20,16 +20,16 @@ export function freshPro(): ProState {
   return {
     runs: 0, active: false, age: 17, year: 0, teamId: null, salary: 0,
     form: 'ok', skill: 55, fame: 0, benchYears: 0, idleYears: 0, yearScore: 0, history: [],
-    titles: { regional: 0, intl: 0, world: 0, worldCup: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
+    titles: { regional: 0, intl: 0, world: 0, worldCup: 0, owwc: 0, fmvp: 0 }, fixes: 0, suspended: 0, growth: 0, talentBonus: 0, income: 0,
     clean: true, ending: null, lifetimeBan: false, yearsPlayed: 0, log: [], highlights: [],
-    yearDone: false, stageAt: 0, level: 0, peakLevel: 0, endings: {},
+    yearDone: false, stageAt: 0, level: 0, peakLevel: 0, lvNote: '', endings: {},
   }
 }
 
-/** 赛事高度往上跳：只升不降（年初另行归零） */
-function levelUp(meta: MetaSave, lv: number) {
+/** 赛事高度往上跳：只升不降（年初回到履历决定的保底）；note 是具体赛事与名次 */
+function levelUp(meta: MetaSave, lv: number, note: string) {
   const p = meta.pro
-  if (lv > p.level) p.level = lv
+  if (lv >= p.level) { p.level = lv; p.lvNote = note }
   if (lv > p.peakLevel) p.peakLevel = lv
 }
 
@@ -145,11 +145,11 @@ const mate = () => MATE_NAMES[irand(0, MATE_NAMES.length - 1)]
 const fm = (n: number) => n.toLocaleString()
 
 function L(meta: MetaSave, cls: string, text: string): LogLine {
-  const line = { cls, text }
+  const line: LogLine = { cls, text, at: meta.pro.age }
   meta.pro.log.push(line)
   return line
 }
-function H(meta: MetaSave, line: LogLine) { meta.pro.highlights.push(line) }
+function H(meta: MetaSave, line: LogLine) { if (line.at == null) line.at = meta.pro.age; meta.pro.highlights.push(line) }
 
 function ach(meta: MetaSave, id: string) {
   if (meta.achievements[id]) return
@@ -343,7 +343,9 @@ function applySign(meta: MetaSave, o: ProOffer, window = false) {
 function* yearGen(meta: MetaSave): Generator<Tick, void, void> {
   const p = meta.pro
   p.yearScore = 0
-  p.level = 0
+  // 年初回到保底：打过 OWCS 的人不用再从网吧赛爬
+  p.level = floorLevel(p)
+  p.lvNote = p.level === LV.regular ? '赛区冠亚军 · 直接常规赛' : p.level === LV.qualifier ? '打过 OWCS · 预选起步' : p.teamId ? '新赛季' : '自由人'
   // 年初：摇状态
   p.form = rollForm(p.growth + p.talentBonus, proAge(p))
   p.skill = irand(FORM_INFO[p.form].min, FORM_INFO[p.form].max)
@@ -526,26 +528,39 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
   return out
 }
 
-/** 一场杯赛：一行 */
+/** 一场杯赛：16 强淘汰赛，一行。打进 4 强才有下一级的名额 */
 function* cup(meta: MetaSave, stage: number, lv: number, you: number): Generator<Tick, boolean, void> {
   const p = meta.pro
   const c = CUPS[lv]
   const name = c.names[irand(0, c.names.length - 1)]
-  levelUp(meta, lv)
-  const semi = series(you, irand(c.opp[0], c.opp[1]), 3)
-  if (!semi.win) {
-    L(meta, 'lose', `S${stage} · 【${PRO_LEVELS[lv]}】${name} · 半决赛 ${semi.score}，${moment(false)}。没拿到晋级名额。`)
-    yield 'step'
-    return false
+  let round = 0
+  let lastScore = ''
+  while (round < 4) {
+    const s = series(you, irand(c.opp[0] + round * 4, c.opp[1] + round * 4), 3)
+    lastScore = s.score
+    if (!s.win) break
+    round++
   }
-  const fin = series(you, irand(c.opp[0] + 6, c.opp[1] + 6), 3)
-  const prize = fin.win ? irand(c.prize[0], c.prize[1]) : Math.round(c.prize[0] / 2)
+  const place = CUP_PLACE[round]
+  const prize = round === 4 ? c.prize : round === 3 ? Math.round(c.prize / 2) : round === 2 ? Math.round(c.prize / 5) : 0
   meta.cash += prize
   p.income += prize
-  addFame(meta, fin.win ? c.fame : Math.round(c.fame / 3))
-  L(meta, fin.win ? 'win' : 'career', `S${stage} · 【${PRO_LEVELS[lv]}】${name} · 决赛 ${fin.score}，${fin.win ? '夺冠' : '亚军'}，奖金 +${fm(prize)}。晋级。`)
+  addFame(meta, Math.round(c.fame * [0.1, 0.25, 0.5, 0.7, 1][round]))
+  levelUp(meta, lv, `${name} · ${place}`)
+  const through = round >= 2
+  const cls = round === 4 ? 'win' : through ? 'career' : 'lose'
+  const tail = through ? `晋级${PRO_LEVELS[lv + 1]}。` : `${moment(false)}。这个 Stage 到此为止。`
+  const l = L(meta, cls, `S${stage} · 【${PRO_LEVELS[lv]}】${name} · ${place}${lastScore && round < 4 ? `（${lastScore}）` : ''}${prize ? `，奖金 +${fm(prize)}` : ''}。${tail}`)
+  if (round === 4) H(meta, l)
   yield 'step'
-  return true
+  return through
+}
+
+/** 你的履历决定从哪一级起步：打过 OWCS 就不回杯赛；拿过赛区冠亚军就直接常规赛 */
+function floorLevel(p: ProState): number {
+  if (p.history.some((r) => r.place > 0 && r.place <= 2)) return LV.regular
+  if (p.peakLevel >= LV.qualifier) return LV.qualifier
+  return 0
 }
 
 /** 一个 Stage：杯赛（底子差的队）→ 预选 → 常规 → 季后 → 国际赛。每一级一行，赛事高度跟着跳 */
@@ -557,37 +572,39 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
   const say = (cls: string, text: string) => L(meta, cls, `S${stage} · ${text}`)
   const tag = bench ? '（你在替补席）' : ''
   const rating = teamRating(t)
+  const floor = floorLevel(p)
 
-  // 杯赛：从哪一级开始打，看队伍底子
+  // 杯赛：从哪一级开始打，看队伍底子；打过 OWCS 的人不用再打
   let alive = true
-  if (!t.partner) {
+  if (!t.partner && floor < LV.qualifier) {
     const from = rating < 48 ? 0 : rating < 62 ? 1 : 2
     for (let lv = from; lv <= 2 && alive; lv++) alive = yield* cup(meta, stage, lv, you)
   }
 
-  // 预选赛：一行
-  if (alive && !(t.partner && stage === 1)) {
-    levelUp(meta, LV.qualifier)
+  // 预选赛：一行。合作队 S1 免；拿过赛区冠亚军的人所在队直接有名额
+  if (alive && !(t.partner && stage === 1) && floor < LV.regular) {
     let w = 0
     for (let i = 0; i < 3; i++) if (series(you, irand(35, 78), 3).win) w++
     const pl = w === 3 ? irand(1, 2) : w === 2 ? irand(3, 5) : w === 1 ? irand(6, 7) : 8
-    if (pl <= 6) say('career', `【预选赛】瑞士轮 ${w}-${3 - w} · 第 ${pl}，晋级常规赛。${tag}`)
-    else { alive = false; res.place = pl; say('lose', `【预选赛】瑞士轮 ${w}-${3 - w} · 第 ${pl}，止步预选。${tag}`) }
+    levelUp(meta, LV.qualifier, `OWCS 预选 · 第 ${pl}`)
+    if (pl <= 6) say('career', `【预选赛】OWCS 预选 · 瑞士轮 ${w}-${3 - w} · 第 ${pl}，晋级常规赛。${tag}`)
+    else { alive = false; res.place = pl; say('lose', `【预选赛】OWCS 预选 · 瑞士轮 ${w}-${3 - w} · 第 ${pl}，止步预选。${tag}`) }
     yield 'step'
   }
 
   if (alive) {
-    levelUp(meta, LV.regular)
     let rw = 0
     let best: string | null = null
     for (let i = 0; i < 5; i++) { const s = series(you, irand(45, 86), 3); if (s.win) { rw++; if (!best) best = moment(true) } }
     ach(meta, 'pro_regular')
-    const pl = rw >= 4 ? irand(1, 2) : rw === 3 ? irand(2, 4) : rw === 2 ? irand(4, 5) : irand(5, 6)
+    let pl = rw >= 4 ? irand(1, 2) : rw === 3 ? irand(2, 4) : rw === 2 ? irand(4, 5) : irand(5, 6)
+    // 世界冠军的底子：常规赛至少四强
+    if (p.titles.world > 0) pl = Math.min(pl, 4)
+    levelUp(meta, LV.regular, `OWCS 常规赛 · 第 ${pl}`)
     if (pl <= 4) {
-      say('career', `【常规赛】${rw} 胜 ${5 - rw} 负 · 第 ${pl}，进季后赛。${best ?? ''}${tag}`)
+      say('career', `【常规赛】OWCS 常规赛 · ${rw} 胜 ${5 - rw} 负 · 第 ${pl}，进季后赛。${best ? best + '。' : ''}${tag}`)
       ach(meta, 'pro_playoffs')
       yield 'step'
-      levelUp(meta, LV.playoffs)
       const semi = series(you, irand(60, 92), 5)
       let text = `胜者组 ${semi.score}`
       if (semi.win) {
@@ -606,14 +623,15 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
       res.prize = STAGE_PRIZE[res.place] ?? 0
       if (bench) res.prize = Math.round(res.prize * 0.4)
       const place = res.place === 1 ? '冠军' : res.place === 2 ? '亚军' : res.place === 3 ? '季军' : '第四'
-      const l = say(res.place === 1 ? 'ending' : res.place === 2 ? 'win' : 'career', `【季后赛】${text}，${place}${res.prize ? `，奖金 +${fm(res.prize)}` : ''}。${res.place === 1 ? moment(true) + '。' : ''}${tag}`)
+      levelUp(meta, LV.playoffs, `OWCS 季后赛 · ${place}`)
+      const l = say(res.place === 1 ? 'ending' : res.place === 2 ? 'win' : 'career', `【季后赛】OWCS 季后赛 · ${text}，${place}${res.prize ? `，奖金 +${fm(res.prize)}` : ''}。${res.place === 1 ? moment(true) + '。' : ''}${tag}`)
       if (res.place <= 2) H(meta, l)
       yield 'step'
     } else {
       res.place = pl
       res.prize = STAGE_PRIZE[pl] ?? 0
       if (bench) res.prize = Math.round(res.prize * 0.4)
-      say('sys', `【常规赛】${rw} 胜 ${5 - rw} 负 · 第 ${pl}，无缘季后赛。${res.prize ? `奖金 +${fm(res.prize)}。` : ''}${tag}`)
+      say('sys', `【常规赛】OWCS 常规赛 · ${rw} 胜 ${5 - rw} 负 · 第 ${pl}，无缘季后赛。${res.prize ? `奖金 +${fm(res.prize)}。` : ''}${tag}`)
       yield 'step'
     }
   }
@@ -626,13 +644,13 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     const name = INTL_NAME[stage]
     if (exposureCheck(meta, '国际赛资格审查')) return
     if (!p.teamId) { say('warn', `队伍带着替补去了${name}。你在家看的直播。`); yield 'step'; return }
-    levelUp(meta, stage === 3 ? LV.worlds : LV.intl)
-    const opps = Array.from({ length: 7 }, () => irand(stage === 3 ? 72 : 68, 94))
+    const tier = stage === 1 ? LV.intl : LV.worlds
+    const opps = Array.from({ length: 7 }, () => irand(stage === 1 ? 68 : 72, 94))
     const foes = [...OPP].sort(() => Math.random() - 0.5)
     let gw = 0
     for (let i = 0; i < 2; i++) if (series(you, opps[i], 5).win) gw++
     let ip: number
-    let text = `${name} · ${INTL_PLACE[stage]} · 小组 ${gw}-${2 - gw}`
+    let text = `${INTL_PLACE[stage]} · 小组 ${gw}-${2 - gw}`
     if (gw === 0) ip = irand(7, 8)
     else if (gw === 1) {
       const dec = series(you, opps[2], 5)
@@ -651,24 +669,27 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
     res.intl = ip
     const ipz = Math.round((INTL_PRIZE[ip] ?? 0) * INTL_MULT[stage]) * (bench ? 0.4 : 1)
     res.prize += ipz
-    addFame(meta, (ip === 1 ? 100000 : ip <= 4 ? 30000 : 10000) * (bench ? 0.3 : 1))
+    addFame(meta, (ip === 1 ? (stage === 1 ? 60000 : 100000) : ip <= 4 ? 30000 : 10000) * (bench ? 0.3 : 1))
     ach(meta, 'pro_intl')
     if (stage === 3 && ip <= 4) ach(meta, 'pro_world_top4')
     if (ip <= 2) p.titles.intl++
+    const place = ip === 1 ? (stage === 1 ? '冠军' : '世界冠军') : ip === 2 ? '亚军' : ip <= 4 ? '4 强' : ip <= 6 ? '8 强' : '小组出局'
     if (ip === 1) {
-      p.titles.world++
-      ach(meta, stage === 3 ? 'pro_world_champ' : 'pro_intl_champ')
-      if (stage === 3) levelUp(meta, LV.champion)
+      if (stage === 1) ach(meta, 'pro_intl_champ')
+      else {
+        p.titles.world++
+        ach(meta, stage === 3 ? 'pro_world_champ' : 'pro_ewc_champ')
+      }
     }
-    const place = ip === 1 ? (stage === 3 ? '世界冠军！' : '冠军！') : ip === 2 ? '亚军' : ip <= 4 ? '四强' : ip <= 6 ? '八强' : '小组出局'
-    const il = say(ip <= 2 ? 'ending' : ip <= 4 ? 'win' : 'career', `【${stage === 3 ? '总决赛' : '国际赛'}】${text}，${place}${ipz ? `，奖金 +${fm(ipz)}` : ''}。${tag}`)
+    levelUp(meta, ip === 1 && stage > 1 ? LV.champion : tier, `${name} · ${place}`)
+    const il = say(ip <= 2 ? 'ending' : ip <= 4 ? 'win' : 'career', `【${PRO_LEVELS[tier]}】${name} · ${text}，${place}${ip === 1 ? '！' : ''}${ipz ? `，奖金 +${fm(ipz)}` : ''}。${tag}`)
     H(meta, il)
     yield 'step'
     // FMVP：世界总决赛冠军且状态在线以上才有资格摇
     if (ip === 1 && stage === 3 && !bench && rand() < (FMVP_P[p.form] ?? 0) * (p.hidden === 'clutch' ? 2 : 1)) {
       p.titles.fmvp++
       addFame(meta, 150000)
-      levelUp(meta, LV.fmvp)
+      levelUp(meta, LV.fmvp, `${name} · FMVP`)
       const fl = L(meta, 'ending', '【FMVP】颁奖台的灯打在你一个人身上。')
       H(meta, fl)
       ach(meta, 'pro_fmvp')
@@ -682,6 +703,29 @@ function* runStage(meta: MetaSave, stage: 1 | 2 | 3, temp: number, bench: boolea
   p.yearScore += Math.max(0, 9 - (res.place || 9)) + (res.intl ? Math.max(0, 9 - res.intl) : 0)
 }
 
+/** OWWC 世界杯：休赛期的国家队，娱乐性质，一行 */
+function* worldCup(meta: MetaSave): Generator<Tick, void, void> {
+  const p = meta.pro
+  p.titles.worldCup++
+  ach(meta, 'pro_worldcup')
+  const you = clamp(p.skill * 0.5 + 40, 55, 92)
+  let round = 0
+  let lastScore = ''
+  const foes = [...OPP].sort(() => Math.random() - 0.5)
+  while (round < 4) {
+    const s = series(you, irand(66 + round * 5, 88 + round * 3), round === 0 ? 3 : 5)
+    lastScore = s.score
+    if (!s.win) break
+    round++
+  }
+  const place = OWWC_PLACE[round]
+  addFame(meta, [20000, 30000, 45000, 60000, 120000][round])
+  if (round === 4) { p.titles.owwc++; ach(meta, 'pro_owwc_champ') }
+  const l = L(meta, round >= 3 ? 'ending' : 'career', `【国家队】OWWC 世界杯 · 中国队 · ${place}${round < 4 ? `（${lastScore} ${foes[round]}）` : `，决赛 ${lastScore} ${foes[3]}！`}。${round === 4 ? '国旗披在身上的照片挂了一周热搜。' : round === 3 ? '差一步。' : round === 0 ? '小组赛没出来，微博评论区全是问号。' : ''}`)
+  H(meta, l)
+  yield 'step'
+}
+
 
 /* ———————————— 年末 ———————————— */
 
@@ -691,14 +735,8 @@ function* yearEnd(meta: MetaSave): Generator<Tick, void, void> {
   p.yearsPlayed++
   p.growth = Math.min(PRO_GROWTH_CAP, p.growth + 1 + (p.yearScore >= 16 ? 1 : 0))
 
-  if (cur && p.yearScore >= 14 && rand() < 0.3) {
-    p.titles.worldCup++
-    addFame(meta, 30000)
-    const l = L(meta, 'ending', '【国家队】世界杯名单公布，有你。')
-    H(meta, l)
-    ach(meta, 'pro_worldcup')
-    yield 'step'
-  }
+  // OWWC 世界杯：成绩够好就进国家队名单，休赛期去打一趟
+  if (cur && p.yearScore >= 14 && rand() < 0.3) yield* worldCup(meta)
 
   // 地狱归来：曾负债，干净，本生涯职业收入够或拿过国际赛冠军
   if (p.clean && meta.dirty.boostJobs + meta.dirty.hires + meta.dirty.cheatSeasons === 0 && meta.cashLow <= HELL_DEBT

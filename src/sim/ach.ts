@@ -10,7 +10,7 @@ export function unlock(g: LifeState, id: string): LogLine | null {
   if (!a) return null
   g.achieved[id] = true
   g.newAchievements.push(id)
-  const line: LogLine = { cls: 'ach', text: `成就【${a.name}】` }
+  const line: LogLine = { cls: 'ach', text: `成就【${a.name}】`, at: g.age }
   g.highlights.push(line)
   return line
 }
