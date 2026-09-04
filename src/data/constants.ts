@@ -94,12 +94,12 @@ export const TALENT_INFO: Record<TalentTier, {
  * 职业档位：天梯天赋带进职业后的叫法。
  * 木桶→蓝领，普通→路人王，有点东西→城市天才，天才→国一，怪物→GOAT。
  */
-export const PRO_TALENT_INFO: Record<TalentTier, { name: string; tag: string; range: string }> = {
-  barrel:    { name: '蓝领',     tag: '上场拿工资',             range: '替补 / 二队主力，冠军看队友' },
-  normal:    { name: '路人王',   tag: '天梯很强，职业够格',     range: '常规赛常客，季后赛边缘' },
-  something: { name: '城市天才', tag: '一块特别能打',           range: '区域明星 · 专精主播那档' },
-  genius:    { name: '国一',     tag: '赛区天花板',             range: '国一长枪 / 自由人 · 亚洲前列' },
-  monster:   { name: 'GOAT',     tag: 'donk / ZywOo / Faker',   range: '改写赛区的那个人' },
+export const PRO_TALENT_INFO: Record<TalentTier, { name: string }> = {
+  barrel:    { name: '蓝领' },
+  normal:    { name: '路人王' },
+  something: { name: '城市天才' },
+  genius:    { name: '国一' },
+  monster:   { name: 'GOAT' },
 }
 
 /* ———————————— 经验 / 等级：只改天才、怪物的概率 ———————————— */
@@ -228,20 +228,68 @@ export const LATE_PASSION_YEAR = 130
 
 /* ———————————— 职业线（OWCS 中国赛区） ———————————— */
 
+/**
+ * 战队池（分层对齐 OWCS 2026 中国赛区 + Midseason）：
+ * amateur = 网吧/社区/城市虚构队；cn_* = 中国预选→常规赛真实队；world_* = 国际赛档。
+ * 中国天花板 Weibo Gaming；国际前四档参考 Midseason：ZETA / Twisted Minds / T1 / WBG 等。
+ */
 export const TEAMS: Team[] = [
-  { id: 'wb', name: '微播电竞', partner: true, rating: 86 },
-  { id: 'jd', name: '京东味道', partner: true, rating: 82 },
-  { id: 'ag', name: 'AG 全员', partner: true, rating: 80 },
-  { id: 'mt', name: '奶茶战队', partner: true, rating: 74 },
-  { id: 'lgd', name: '老干爹青训', partner: false, rating: 64 },
-  { id: 'cq', name: '重庆火锅', partner: false, rating: 58 },
-  { id: 'xa', name: '西安肉夹馍', partner: false, rating: 52 },
-  { id: 'gz', name: '广州早茶', partner: false, rating: 48 },
-  { id: 'nb', name: '网吧一队', partner: false, rating: 38 },
+  // —— 虚构草根 ——
+  { id: 'netbar', name: '网吧一队', short: '网吧', partner: false, rating: 36, tier: 'amateur', region: 'cn', logo: 'netbar.svg' },
+  { id: 'college', name: '高校社联', short: '高校', partner: false, rating: 44, tier: 'amateur', region: 'cn', logo: 'college.svg' },
+  { id: 'street', name: '街电青年', short: '街电', partner: false, rating: 50, tier: 'amateur', region: 'cn', logo: 'street.svg' },
+  { id: 'village', name: '花村游击', short: '花村', partner: false, rating: 56, tier: 'amateur', region: 'cn', logo: 'village.svg' },
+  // —— 中国预选 / 常规赛中下游（OWCS CN；队徽自 Liquipedia）——
+  { id: 'rtz', name: 'ReturnZ', short: 'RTZ', partner: false, rating: 62, tier: 'cn_q', region: 'cn', logo: 'rtz.png' },
+  { id: 'kk', name: 'Kitsune Kage', short: 'KK', partner: false, rating: 64, tier: 'cn_q', region: 'cn', logo: 'kk.png' },
+  { id: 'homie', name: 'Homie E', short: 'Homie', partner: false, rating: 68, tier: 'cn_q', region: 'cn', logo: 'homie.png' },
+  { id: 'milktea', name: 'Milk Tea', short: 'MT', partner: false, rating: 69, tier: 'cn_mid', region: 'cn', logo: 'milktea.png' },
+  { id: 'hng', name: 'HUNENG Gaming', short: 'HNG', partner: false, rating: 70, tier: 'cn_mid', region: 'cn', logo: 'hng.png' },
+  { id: 'fam', name: 'Four Angry Men', short: '4AM', partner: false, rating: 72, tier: 'cn_mid', region: 'cn', logo: 'fam.png' },
+  { id: 'sv', name: 'Solus Victorem', short: 'SV', partner: true, rating: 76, tier: 'cn_mid', region: 'cn', logo: 'sv.png' },
+  { id: 'ag', name: 'All Gamers', short: 'AG', partner: true, rating: 80, tier: 'cn_mid', region: 'cn', logo: 'ag.png' },
+  // —— 中国天花板 ——
+  { id: 'jdg', name: 'JD Gaming', short: 'JDG', partner: true, rating: 88, tier: 'cn_top', region: 'cn', logo: 'jdg.png' },
+  { id: 'wbg', name: 'Weibo Gaming', short: 'WBG', partner: true, rating: 92, tier: 'cn_top', region: 'cn', logo: 'wbg.png' },
+  // —— 国际 13–16 ——
+  { id: 'liquid', name: 'Team Liquid', short: 'TL', partner: false, rating: 78, tier: 'world_c', region: 'na', logo: 'liquid.png' },
+  { id: 'secret', name: 'Team Secret', short: 'TS', partner: false, rating: 77, tier: 'world_c', region: 'emea', logo: 'secret.png' },
+  { id: 'ninez', name: '9z Team', short: '9Z', partner: false, rating: 76, tier: 'world_c', region: 'latam', logo: 'ninez.png' },
+  // —— 国际 9–12 ——
+  { id: 'vp', name: 'Virtus.pro', short: 'VP', partner: false, rating: 84, tier: 'world_b', region: 'emea', logo: 'vp.png' },
+  { id: 'falcons', name: 'Team Falcons', short: 'FAL', partner: false, rating: 86, tier: 'world_b', region: 'emea', logo: 'falcons.png' },
+  { id: 'varrel', name: 'VARREL', short: 'VAR', partner: false, rating: 83, tier: 'world_b', region: 'jp', logo: 'varrel.png' },
+  // —— 国际 5–8 ——
+  { id: 'cr', name: 'Crazy Raccoon', short: 'CR', partner: false, rating: 90, tier: 'world_a', region: 'kr', logo: 'cr.png' },
+  { id: 'dallas', name: 'Dallas Fuel', short: 'DAL', partner: false, rating: 88, tier: 'world_a', region: 'na', logo: 'dallas.png' },
+  { id: 'ssg', name: 'Spacestation Gaming', short: 'SSG', partner: false, rating: 87, tier: 'world_a', region: 'na', logo: 'ssg.png' },
+  { id: 'geekay', name: 'Geekay Esports', short: 'GK', partner: false, rating: 85, tier: 'world_a', region: 'emea', logo: 'geekay.png' },
+  // —— 国际前四（天花板）——
+  { id: 'zeta', name: 'ZETA DIVISION', short: 'ZETA', partner: false, rating: 96, tier: 'world_s', region: 'jp', logo: 'zeta.png' },
+  { id: 'tm', name: 'Twisted Minds', short: 'TM', partner: false, rating: 94, tier: 'world_s', region: 'emea', logo: 'tm.png' },
+  { id: 't1', name: 'T1', short: 'T1', partner: false, rating: 95, tier: 'world_s', region: 'kr', logo: 't1.png' },
 ]
 
-/** 年薪（现实里 OWCS 中国底薪不高；合作战队体面） */
-export const SALARY = { partner: [80000, 160000] as const, normal: [30000, 60000] as const, bench: [15000, 30000] as const }
+/** 年薪：按档位；外援合同再乘一截 */
+export const SALARY = {
+  amateur: [18000, 40000] as const,
+  cn_q: [35000, 70000] as const,
+  cn_mid: [60000, 120000] as const,
+  cn_top: [100000, 200000] as const,
+  world: [120000, 280000] as const,
+  bench: [15000, 35000] as const,
+} as const
+export const TEAM_TIER_ORDER = ['amateur', 'cn_q', 'cn_mid', 'cn_top', 'world_c', 'world_b', 'world_a', 'world_s'] as const
+export const TEAM_TIER_CLASS: Record<Team['tier'], string> = {
+  amateur: 'tm-amateur',
+  cn_q: 'tm-cn-q',
+  cn_mid: 'tm-cn-mid',
+  cn_top: 'tm-cn-top',
+  world_c: 'tm-world-c',
+  world_b: 'tm-world-b',
+  world_a: 'tm-world-a',
+  world_s: 'tm-world-s',
+}
 /** 地区名次奖金（人均分成） */
 export const STAGE_PRIZE = [0, 60000, 30000, 15000, 8000, 3000, 1500, 0, 0]
 /** 国际赛名次奖金（人均分成，基准）× 各站倍数 */

@@ -168,10 +168,22 @@ export interface LifeState {
 export interface Team {
   id: string
   name: string
-  /** 合作战队：Stage 1 免预选，底薪高 */
+  /** 简称，队徽旁小字 */
+  short: string
+  /** 合作战队：中国赛区 Stage 1 免预选，底薪高 */
   partner: boolean
   /** 队伍底子 0–100 */
   rating: number
+  /**
+   * 档位：amateur 网吧/社区/城市虚构队；
+   * cn_q 中国预选 5–8；cn_mid 常规赛中游；cn_top 中国天花板（WBG/JDG）；
+   * world_c/b/a/s 对应国际赛 13–16 / 9–12 / 5–8 / 前四。
+   */
+  tier: 'amateur' | 'cn_q' | 'cn_mid' | 'cn_top' | 'world_c' | 'world_b' | 'world_a' | 'world_s'
+  /** 赛区；非 cn 的队签了就是外援 */
+  region: 'cn' | 'kr' | 'jp' | 'emea' | 'na' | 'sa' | 'latam'
+  /** public/teams/ 下的文件名 */
+  logo: string
 }
 
 /** 本年状态档（职业模式的「天赋」） */

@@ -1,8 +1,8 @@
 import './style.css'
-import type { HiddenTalent, LifeState, LogLine, RankState, TalentTier } from './types'
+import type { HiddenTalent, LifeState, LogLine, RankState, TalentTier, Team } from './types'
 import {
   ACH_PERKS, DEFAULT_SPEED, FORM_INFO, HIDDEN_INFO, INTL_NAME, LIFE_TICK_MS, MAJOR_NAME, MAX_SPEED, MIN_SPEED, PRO_TICK_MS, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
-  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, topPlace,
+  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TEAM_TIER_CLASS, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { levelNeed, talentProbs, talentShift } from './data/talent'
@@ -12,7 +12,17 @@ import { beginCareerRun, careerInProgress, exposureP, proStep, retireNow, teamOf
 
 const fmt = (n: number) => n.toLocaleString()
 const DEBUG = new URLSearchParams(location.search).has('debug')
+const teamLogoUrl = (file: string) => `${import.meta.env.BASE_URL}teams/${file}`
 
+/** 队名徽章：logo + 队名，边框按档位越来越炫；外援挂角标 */
+function teamBadge(t: Team | null) {
+  if (!t) return `<div class="team-badge tm-free"><span class="tb-name">自由人</span></div>`
+  const tag = t.region !== 'cn' ? '<em class="tb-tag">外援</em>' : ''
+  return `<div class="team-badge ${TEAM_TIER_CLASS[t.tier]}">
+    <img class="tb-logo" src="${teamLogoUrl(t.logo)}" alt="" width="36" height="36" />
+    <div class="tb-text"><b class="tb-name">${t.name}</b>${tag}</div>
+  </div>`
+}
 const meta = loadMeta()
 if (typeof meta.speed !== 'number') meta.speed = DEFAULT_SPEED
 if (typeof meta.manual !== 'boolean') meta.manual = false
@@ -319,9 +329,8 @@ function talentPlate(t: TalentTier, hidden: HiddenTalent | null) {
 function proTalentPlate(t: TalentTier, hidden: HiddenTalent | null) {
   const ti = TALENT_INFO[t]
   const pt = PRO_TALENT_INFO[t]
-  return `<div class="tal-plate pro-tier ${ti.cls}${hidden ? ' has-h' : ''}" title="${pt.range}">
+  return `<div class="tal-plate pro-tier ${ti.cls}${hidden ? ' has-h' : ''}">
     <small>档位</small><b>${pt.name}</b>
-    <span class="pt-tag">${pt.tag}</span>
     ${hidden ? `<em class="tal-h">${HIDDEN_INFO[hidden].name}</em>` : ''}
   </div>`
 }
@@ -334,7 +343,7 @@ function proTalentBar() {
   const segs = TALENT_ORDER.map((t) => {
     const ti = TALENT_INFO[t]
     const pt = PRO_TALENT_INFO[t]
-    return `<i class="${ti.cls}" style="width:${probs[t]}%" title="${pt.name} ${pct1(probs[t])}% · ${pt.range}"></i>`
+    return `<i class="${ti.cls}" style="width:${probs[t]}%" title="${pt.name} ${pct1(probs[t])}%"></i>`
   }).join('')
   const legend = TALENT_ORDER.map((t) => `<span class="${TALENT_INFO[t].cls}">${PRO_TALENT_INFO[t].name}</span>`).join('')
   return `<div class="section" style="padding-bottom:10px">
@@ -431,7 +440,8 @@ function renderHome() {
   const proNow = p.active
     ? `<div class="section">
         <div class="label">进行中的职业生涯</div>
-        <p class="tip" style="color:var(--bone)"><span class="career">${teamOf(p.teamId)?.name ?? '自由人'}</span> · ${p.age} 岁 · 第 ${p.year + 1} 年 · 人气 ${fmt(p.fame)}</p>
+        <div style="margin:8px 0 4px">${teamBadge(teamOf(p.teamId))}</div>
+        <p class="tip" style="color:var(--bone)">${p.age} 岁 · 第 ${p.year + 1} 年 · 人气 ${fmt(p.fame)}</p>
         <button class="btn btn-pro btn-gold" id="btn-pro" style="margin-top:10px">继续职业生涯</button>
       </div>`
     : ''
@@ -686,7 +696,6 @@ function expCard(exp: number, ups: number, achBefore: number) {
     </div>
     ${talentStack(shiftNow, shiftBefore)}
     <div class="tal-legend">${legend}</div>
-    <div class="tip" style="margin-top:8px">${delta > 0 ? '亮的那一截是加成：成就和等级挪过来的概率，下辈子摇天赋直接算。' : shiftNow >= 15 ? '加成已到顶（+15%）。' : '这辈子没升级、没新成就，下辈子的概率不变。'}</div>
   </div>`
 }
 
@@ -866,7 +875,7 @@ function renderPro() {
   } else {
     body = `<div class="dossier">
         <div class="cell"><div class="label">年龄</div><div class="num">${p.age}</div><small>第 ${p.year + 1} 年</small></div>
-        <div class="cell"><div class="label">队伍</div><div style="font-family:var(--display);font-size:1rem;line-height:1.5" class="career">${t ? t.name : '自由人'}</div><small>${t ? `${t.partner ? '合作战队' : '普通队'} · 底子 ${teamRating(t)}` : '年初等报价'}</small></div>
+        <div class="cell"><div class="label">队伍</div><div style="margin:4px 0">${teamBadge(t)}</div><small>${t ? `底子 ${teamRating(t)}` : '年初等报价'}</small></div>
         <div class="cell"><div class="label">人气</div><div class="num">${fmt(p.fame)}</div><small>现金 ${fmt(meta.cash)}</small></div>
       </div>
       <div class="section">
@@ -903,10 +912,10 @@ function proHud() {
   const t = teamOf(p.teamId)
   const fi = FORM_INFO[p.form]
   const talent = p.talent ?? 'normal'
-  set('pro-title', t ? t.name : '自由人')
+  set('pro-title', teamBadge(t))
   set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁 · ${p.stageAt ? `Stage <span class="num">${p.stageAt}</span>/3` : '年初'}</span><span>峰值 <span class="${PRO_LEVEL_CLASS[p.peakLevel]}">${PRO_LEVELS[p.peakLevel]}</span></span>${p.suspended ? `<span class="ban">禁赛 ${p.suspended}</span>` : ''}`)
   set('pro-level', `<span class="${PRO_LEVEL_CLASS[p.level]}"><span class="cn">${PRO_LEVELS[p.level]}</span></span><small class="lv-note">${p.lvNote || ''}</small>`)
-  set('pro-side', `${proTalentPlate(talent, p.hidden ?? null)}<span class="form-chip ${fi.cls}">${fi.name}</span>${t ? `<span class="team-chip">${t.partner ? '合作战队' : '普通队'}</span>` : '<span class="team-chip">自由人</span>'}`)
+  set('pro-side', `${proTalentPlate(talent, p.hidden ?? null)}<span class="form-chip ${fi.cls}">${fi.name}</span>`)
   renderTrophies('pro-trophies', true)
   if (!$('pres-cash')) set('pro-res', `${resBar('cash', meta.cash, 'pres-cash')}${resBar('fans', p.fame, 'pres-fans')}`)
   else { paintRes('cash', meta.cash, 'pres-cash'); paintRes('fans', p.fame, 'pres-fans') }
@@ -926,15 +935,15 @@ function startProRun() {
   bannerShownPro = p.highlights.length
   trophyShown = { regional: 0, intl: 0, world: 0, fmvp: 0, cap: 0, owwc: 0 }
   app.innerHTML = `
-    <div class="top">
-      <h2 id="pro-title"></h2>
+    <div class="top team-top">
+      <div id="pro-title"></div>
       <div class="actions"><button class="btn btn-sm" id="btn-pro-pause">暂停</button></div>
     </div>
     <div class="stat" id="pro-meta"></div>
     <div class="rank-hero" id="pro-level"></div>
     <div class="pro-side" id="pro-side"></div>
     <div class="trophies" id="pro-trophies"></div>
-    <div class="res-row" id="pro-res"></div>
+    <div class="res-row"><div class="res-group" id="pro-res"></div></div>
     <div class="bar"><i id="pro-bar" style="width:0%"></i></div>
     <div class="tip" style="margin-bottom:10px">OWCS 中国赛区${meta.manual ? ' · 点赛程推进' : ''}</div>
     <div class="log-cols">
@@ -990,22 +999,11 @@ function renderProSettle() {
   const newAch = p.highlights.filter((l) => l.cls === 'ach').map((l) => ACHIEVEMENTS.find((a) => a.name === l.text.replace(/^成就【|】$/g, ''))).filter((a): a is AchLike => !!a)
   const big = (l: LogLine) => l.cls === 'ending' || l.cls === 'ban' || l.cls === 'ach'
   const hl = [...p.highlights.filter(big), ...p.highlights.filter((l) => !big(l))].slice(0, 14)
-  const titles = [
-    p.titles.regional ? `地区冠军 ×${p.titles.regional}` : '',
-    p.titles.intl ? `国际赛前二 ×${p.titles.intl}` : '',
-    p.titles.world ? `国际赛冠军 ×${p.titles.world}` : '',
-    p.titles.fmvp ? `FMVP ×${p.titles.fmvp}` : '',
-    p.titles.worldCup ? `国家队 ×${p.titles.worldCup}` : '',
-    p.titles.owwc ? `世界杯冠军 ×${p.titles.owwc}` : '',
-  ].filter(Boolean).join(' · ')
+  trophyShown = { regional: 0, intl: 0, world: 0, fmvp: 0, cap: 0, owwc: 0 }
   app.innerHTML = `<div class="reveal">
     <div class="sub" style="margin:0 0 6px">职业生涯 · ${p.yearsPlayed} 年 · ${p.age} 岁</div>
     <div class="rank-hero" style="text-align:center;font-size:2rem"><span class="career">${p.ending ? p.ending.title : '退役'}</span></div>
-    <div class="stat" style="justify-content:center;margin-top:6px">
-      <span>人气 <span class="num">${fmt(p.fame)}</span></span>
-      <span>现金 <span class="num ${meta.cash < 0 ? 'lose' : ''}">${fmt(meta.cash)}</span></span>
-      <span>职业收入 <span class="num">${fmt(p.income)}</span></span>
-    </div>
+    <div class="trophies settle-cups" id="settle-trophies"></div>
     <div class="btn-row">
       <button class="btn btn-primary" id="again">再来一辈子 · 摇天赋</button>
       <button class="btn" id="home">回首页</button>
@@ -1016,7 +1014,6 @@ function renderProSettle() {
         <div class="tip">${p.ending.rankLabel}</div>
         ${p.ending.verse.map((v) => `<div class="verse">${v}</div>`).join('')}
       </div>` : ''}
-    ${titles ? `<div class="section"><div class="label">荣誉</div><p class="tip" style="color:var(--brass)">${titles}</p></div>` : ''}
     ${newAchCards(newAch)}
     ${p.endExp != null ? expCard(p.endExp, p.endUps ?? 0, achCount(meta) - newAch.length) : ''}
     ${hl.length ? `<div class="section"><div class="label">生涯高光</div>${hl.map((l) => `<div class="hl ${l.cls}">${l.text}</div>`).join('')}</div>` : ''}
@@ -1024,6 +1021,7 @@ function renderProSettle() {
     <div class="section"><div class="label">赛程</div><div class="log-box" id="pro-log" style="max-height:40vh"></div></div>
   </div>`
   appendTo('pro-log', p.log)
+  renderTrophies('settle-trophies', false)
   animateStacks()
   $('again')?.addEventListener('click', startLife)
   $('home')!.onclick = renderHome

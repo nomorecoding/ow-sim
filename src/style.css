@@ -255,15 +255,15 @@ b { font-weight: 600; color: var(--bone); }
 @keyframes hpHeal { 0%, 100% { filter: none; } 40% { filter: brightness(1.25); box-shadow: inset 0 0 0 1px #6cc3a0; } }
 
 /* 钱包 / 人气：档位词 + 进度条，数字只在 title */
-.res-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin: 0 0 8px; }
-.res-group { display: flex; flex: 1; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.res-row { display: flex; flex-wrap: nowrap; gap: 8px 14px; align-items: flex-end; margin: 0 0 8px; }
+.res-group { display: flex; flex: 1 1 auto; gap: 12px; min-width: 0; flex-wrap: nowrap; }
 .res-bar {
-  position: relative; flex: 1; min-width: 140px; max-width: 280px;
+  position: relative; flex: 1 1 0; min-width: 0; max-width: none;
   padding: 4px 0 2px;
 }
-.res-bar .rb-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-.res-bar .res-k { font-size: 0.62rem; letter-spacing: 0.22em; color: var(--bone-faint); font-family: var(--display); }
-.res-bar .res-t { font-size: 0.82rem; color: var(--bone); letter-spacing: 0.06em; }
+.res-bar .rb-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 8px; white-space: nowrap; }
+.res-bar .res-k { font-size: 0.62rem; letter-spacing: 0.22em; color: var(--bone-faint); font-family: var(--display); flex: 0 0 auto; }
+.res-bar .res-t { font-size: 0.82rem; color: var(--bone); letter-spacing: 0.06em; overflow: hidden; text-overflow: ellipsis; }
 .res-bar .rb-track { height: 5px; background: var(--hair); overflow: hidden; }
 .res-bar .rb-fill { display: block; height: 100%; width: 0%; transition: width 0.4s ease; background: currentColor; }
 .res-bar.cash { color: #d4af5a; }
@@ -308,12 +308,67 @@ b { font-weight: 600; color: var(--bone); }
 
 /* 职业：档位 + 状态 + 奖杯柜 */
 .pro-side { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 10px; }
-.form-chip, .team-chip {
+.form-chip {
   font-family: var(--display); font-size: 0.78rem; letter-spacing: 0.14em;
   padding: 4px 10px; border: 1px solid currentColor;
 }
-.team-chip { color: var(--bone-dim); border-color: var(--hair-2); }
+.team-top { align-items: center; gap: 12px; }
+.team-top #pro-title { flex: 1; min-width: 0; }
+.team-badge {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 14px 6px 8px; max-width: 100%;
+  border: 1px solid var(--hair-2); background: rgba(255, 255, 255, 0.03);
+}
+.team-badge .tb-logo {
+  width: 36px; height: 36px; object-fit: contain; flex: 0 0 auto;
+  background: rgba(0, 0, 0, 0.35); border-radius: 4px;
+}
+.team-badge .tb-text { min-width: 0; line-height: 1.2; }
+.team-badge .tb-name {
+  display: block; font-family: var(--display); font-size: 1.15rem; font-weight: 700;
+  letter-spacing: 0.04em; color: var(--bone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.team-badge .tb-tag {
+  display: inline-block; margin-top: 3px; font-style: normal;
+  font-size: 0.62rem; letter-spacing: 0.18em; color: #86aee8;
+  border: 1px solid rgba(134, 174, 232, 0.45); padding: 0 5px;
+}
+.team-badge.tm-free { padding: 8px 14px; }
+.team-badge.tm-amateur { border-color: var(--hair-2); }
+.team-badge.tm-cn-q { border-color: #6a7a8a; }
+.team-badge.tm-cn-mid { border-color: #86aee8; box-shadow: 0 0 0 1px rgba(134, 174, 232, 0.15); }
+.team-badge.tm-cn-top {
+  border-color: #e2a75f; background: linear-gradient(90deg, rgba(226, 167, 95, 0.12), transparent 70%);
+  box-shadow: 0 0 18px rgba(226, 167, 95, 0.18);
+}
+.team-badge.tm-cn-top .tb-name { color: #e8d7a8; }
+.team-badge.tm-world-c { border-color: #7a8a9a; }
+.team-badge.tm-world-b {
+  border-color: #bdd486; box-shadow: 0 0 0 1px rgba(189, 212, 134, 0.2);
+}
+.team-badge.tm-world-a {
+  border-color: #b48fdc;
+  background: linear-gradient(90deg, rgba(180, 143, 220, 0.14), transparent 65%);
+  box-shadow: 0 0 16px rgba(180, 143, 220, 0.22);
+}
+.team-badge.tm-world-a .tb-name { color: #d4c0f0; }
+.team-badge.tm-world-s {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--ink-2), var(--ink-2)) padding-box,
+    linear-gradient(120deg, #f0d68a, #ff4d6d, #86aee8, #f0d68a) border-box;
+  background-size: 100% 100%, 220% 220%;
+  animation: teamGlow 4s linear infinite;
+  box-shadow: 0 0 22px rgba(240, 214, 138, 0.28);
+}
+.team-badge.tm-world-s .tb-name {
+  background: linear-gradient(90deg, #fff3cf, #f0d68a 40%, #fff, #f0d68a);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  background-size: 200% 100%; animation: shimmer 3s linear infinite;
+}
+@keyframes teamGlow { 0% { background-position: 0 0, 0% 50%; } 100% { background-position: 0 0, 200% 50%; } }
 .trophies { min-height: 36px; margin: 0 0 10px; }
+.settle-cups { justify-content: center; text-align: center; margin: 10px 0 4px; }
 .trophy-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .trophy {
   display: inline-flex; width: 28px; height: 28px; color: var(--brass);

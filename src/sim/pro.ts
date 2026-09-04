@@ -44,6 +44,32 @@ export function teamRating(t: Team): number {
   return clamp(t.rating + (teamMods[t.id] ?? 0), 30, 96)
 }
 
+function salaryRange(t: Team, bench: boolean): readonly [number, number] {
+  if (bench) return SALARY.bench
+  if (t.tier === 'amateur') return SALARY.amateur
+  if (t.tier === 'cn_q') return SALARY.cn_q
+  if (t.tier === 'cn_mid') return SALARY.cn_mid
+  if (t.tier === 'cn_top') return SALARY.cn_top
+  return SALARY.world
+}
+
+/** 外援 / 高阶队：只有成绩够了才给报价 */
+function canOffer(meta: MetaSave, t: Team): boolean {
+  const p = meta.pro
+  if (t.tier === 'amateur' || t.tier === 'cn_q' || t.tier === 'cn_mid') return true
+  if (t.tier === 'cn_top') return p.skill >= 72 || p.titles.regional > 0 || p.peakLevel >= 4
+  if (t.region !== 'cn') {
+    // 出国当外援：至少打进过季后赛，或者人气/实力到线
+    if (p.peakLevel < 5 && p.titles.regional === 0 && p.skill < 78) return false
+  }
+  if (t.tier === 'world_c') return p.skill >= 74 || p.titles.intl > 0
+  if (t.tier === 'world_b') return p.skill >= 80 || p.titles.intl > 0
+  if (t.tier === 'world_a') return p.skill >= 85 || p.titles.intl > 0 || p.titles.world > 0
+  if (t.tier === 'world_s') return (p.skill >= 88 && p.titles.intl > 0) || p.titles.world > 0 || p.titles.fmvp > 0
+  return true
+}
+
+
 /* ———————————— 状态档（职业模式的天赋） ———————————— */
 
 /** 年龄在职业里的「体感」：晚熟的人身体晚四年报警 */
@@ -273,26 +299,31 @@ function makeOffers(meta: MetaSave, window: boolean): ProOffer[] {
   for (const t of TEAMS) {
     if (cur && t.id === cur.id) continue
     if (deadTeams.has(t.id)) continue
+    if (!canOffer(meta, t)) continue
     const need = teamRating(t) - 8
-    const pr = t.partner ? clamp((value - need) / 40 + 0.1, 0, 0.6) * (perks(meta).has('offers') ? 1.4 : 1) : clamp((value - need) / 30 + 0.22, 0.03, 0.75)
+    let pr = t.partner ? clamp((value - need) / 40 + 0.1, 0, 0.55) : clamp((value - need) / 30 + 0.18, 0.02, 0.7)
+    if (t.partner) pr *= perks(meta).has('offers') ? 1.4 : 1
+    if (t.region !== 'cn') pr *= 0.55 // 外援名额少
+    if (t.tier === 'world_s') pr *= 0.45
     if (rand() < pr) {
       const bench = p.skill < teamRating(t) - 15
-      const [a, b] = bench ? SALARY.bench : t.partner ? SALARY.partner : SALARY.normal
-      out.push({ teamId: t.id, salary: irand(a, b), role: bench ? 'bench' : 'starter' })
+      const [a, b] = salaryRange(t, bench)
+      const pay = t.region !== 'cn' ? Math.round(irand(a, b) * 1.15) : irand(a, b)
+      out.push({ teamId: t.id, salary: pay, role: bench ? 'bench' : 'starter' })
     }
   }
   // 续约：年度积分够（合作战队要求更高；年纪大了要求再高）
   const needScore = (cur?.partner ? 14 : 10) + Math.max(0, p.age - 26) * 2
   if (window && cur && p.yearScore >= needScore) {
-    const [a, b] = cur.partner ? SALARY.partner : SALARY.normal
+    const [a, b] = salaryRange(cur, false)
     out.unshift({ teamId: cur.id, salary: Math.round(irand(a, b) * (p.yearScore >= 16 ? 1.3 : 1)), role: 'starter' })
   }
-  // 出道那年保底：总有一支普通队肯给青训合同，别让第一年就「没人要」
+  // 出道那年保底：总有一支草根队肯给青训合同
   if (!out.length && p.year === 0 && !window) {
-    const pool = TEAMS.filter((t) => !t.partner && !deadTeams.has(t.id))
+    const pool = TEAMS.filter((t) => t.tier === 'amateur' && !deadTeams.has(t.id))
     const t = pool.sort((a, b) => teamRating(a) - teamRating(b))[0]
     if (t) {
-      const [a] = SALARY.normal
+      const [a] = salaryRange(t, false)
       out.push({ teamId: t.id, salary: irand(Math.round(a * 0.6), a), role: 'starter' })
     }
   }
@@ -325,15 +356,19 @@ function applySign(meta: MetaSave, o: ProOffer, window = false) {
   p.income += p.salary
   p.idleYears = 0
   const verb = wasCur ? '续约' : window && prev ? '转会' : '签约'
-  const flavor = wasCur
-    ? (rand() < 0.5 ? '老板说明年再冲一冲。' : '你没看合同就签了。')
-    : t.partner && prev && !prev.partner
-      ? '从小队跳到大队，群里有人说你抱团。'
-      : o.role === 'bench'
-        ? '合同上写的是替补。经理说「先适应一下」。'
-        : prev ? `${prev.name} 的队友在群里发了个「走好」。` : '你把训练室的照片发了朋友圈。'
-  L(meta, 'career', `【${verb}】${t.name}，年薪 ${fm(p.salary)}。${flavor}`)
-  H(meta, { cls: 'career', text: `${verb} ${t.name}` })
+  const foreign = t.region !== 'cn'
+  let flavor: string
+  if (wasCur) flavor = rand() < 0.5 ? '老板说明年再冲一冲。' : '你没看合同就签了。'
+  else if (foreign) flavor = prev?.region === 'cn'
+    ? '外援合同。护照页被翻了又翻，助理说「机票我订」。'
+    : '还是外援名额。训练室里中文变少了。'
+  else if (t.partner && prev && !prev.partner) flavor = '从小队跳到大队，群里有人说你抱团。'
+  else if (o.role === 'bench') flavor = '合同上写的是替补。经理说「先适应一下」。'
+  else if (prev) flavor = `${prev.name} 的队友在群里发了个「走好」。`
+  else flavor = '你把训练室的照片发了朋友圈。'
+  const tag = foreign ? '外援·' : ''
+  L(meta, 'career', `【${verb}】${tag}${t.name}，年薪 ${fm(p.salary)}。${flavor}`)
+  H(meta, { cls: 'career', text: `${verb} ${t.short}` })
   ach(meta, 'pro_signed')
   if (t.partner) ach(meta, 'pro_partner')
   if (!wasCur && prev) ach(meta, 'pro_transfer')
@@ -448,10 +483,10 @@ function* stageEvent(meta: MetaSave, stage: 1 | 2 | 3): Generator<Tick, EventOut
     return out
   }
   if (r < 0.09) { push('warn', `【宫斗】${mate()} 和 ${mate()} 为首发位置闹到教练组，训练赛打成两派。你在中间。`); out.temp = -6; yield 'step'; return out }
-  if (r < 0.12) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【被挖】主力 ${mate()} 被${TEAMS[irand(0, 3)].name}挖走。`); yield 'step'; return out }
+  if (r < 0.12) { teamMods[t.id] = (teamMods[t.id] ?? 0) - 4; push('warn', `【被挖】主力 ${mate()} 被${TEAMS.filter((x) => x.tier === 'cn_top' || x.tier === 'cn_mid')[irand(0, 5)].name}挖走。`); yield 'step'; return out }
   if (r < 0.15) { teamMods[t.id] = (teamMods[t.id] ?? 0) + 4; push('career', `【补强】战队签下韩援 ${mate()}。训练赛开始赢了。`); yield 'step'; return out }
   if (r < 0.18) {
-    const big = TEAMS[irand(0, 3)]
+    const big = TEAMS.filter((x) => x.tier === 'cn_top' || x.tier === 'cn_mid')[irand(0, 5)]
     if (big.id !== t.id) { teamMods[big.id] = (teamMods[big.id] ?? 0) + 6; push('warn', `【抱团】${big.name} 一口气签了三个国家队选手。`); yield 'step'; return out }
   }
   if (r < 0.21) { push('warn', `【enjoy】老板不投钱了，训练赛改成每天两小时。${mate()} 直播比训练时间长。`); out.temp = -8; yield 'step'; return out }
