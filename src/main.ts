@@ -1,5 +1,5 @@
 import './style.css'
-import type { HiddenTalent, LifeState, LogLine, MetaSave, RankState, TalentTier, Team } from './types'
+import type { Achievement, AchMedal, HiddenTalent, LifeState, LogLine, MetaSave, RankState, TalentTier, Team } from './types'
 import {
   ACH_PERKS, DEFAULT_SPEED, FORM_INFO, HIDDEN_INFO, INTL_NAME, LIFE_TICK_MS, MAJOR_NAME, MAX_SPEED, MIN_SPEED, PRO_TICK_RATIO, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
   PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TALENT_SHIFT_CAP, TALENT_SHIFT_PER, TEAM_TIER_CLASS, topPlace,
@@ -137,10 +137,50 @@ function toast(text: string) {
   window.setTimeout(() => { t.classList.remove('show'); window.setTimeout(() => t.remove(), 400) }, 4200)
 }
 
-/* ———————————— 成就横幅：右下角小条叠层，不挡玩法，自动淡出 ———————————— */
+/* ———————————— 成就横幅：左下角叠层，不挡右下角回顶 ———— */
 
-type AchLike = { id: string; name: string; desc: string; honor?: boolean; secret?: boolean }
-const achWeight = (a: AchLike) => (a.secret ? 3 : a.honor ? 2 : 1)
+type AchLike = Achievement
+const MEDAL_RANK: Record<AchMedal, number> = { bronze: 1, silver: 2, gold: 3 }
+const MEDAL_LABEL: Record<AchMedal, string> = { bronze: '铜', silver: '银', gold: '金' }
+const achWeight = (a: AchLike) => (a.secret ? 10 : 0) + MEDAL_RANK[a.medal]
+
+/** 实心奖牌：圆章内写铜 / 银 / 金 */
+function medalSvg(tier: AchMedal, cls = 'medal-ico') {
+  const fill = tier === 'gold' ? '#d4a84b' : tier === 'silver' ? '#a8b4c4' : '#b07848'
+  const rim = tier === 'gold' ? '#f0d78a' : tier === 'silver' ? '#d8dee8' : '#d4a06a'
+  const ink = tier === 'gold' ? '#3a2a0a' : tier === 'silver' ? '#2a3038' : '#2e1c0c'
+  const label = MEDAL_LABEL[tier]
+  return `<svg class="${cls} m-${tier}" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="${rim}" d="M8.2 2.8h7.6l-1.4 4.2H9.6L8.2 2.8z"/>
+    <circle cx="12" cy="14.2" r="7.2" fill="${fill}"/>
+    <circle cx="12" cy="14.2" r="5.6" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
+    <text x="12" y="16.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="${ink}">${label}</text>
+  </svg>`
+}
+
+function medalCounts() {
+  const got = { bronze: 0, silver: 0, gold: 0 }
+  const total = { bronze: 0, silver: 0, gold: 0 }
+  for (const a of ACHIEVEMENTS) {
+    // 未解锁隐藏不计入分母，避免剧透档位
+    if (a.secret && !meta.achievements[a.id]) continue
+    total[a.medal]++
+    if (meta.achievements[a.id]) got[a.medal]++
+  }
+  return { got, total }
+}
+
+function medalHudHtml() {
+  const { got, total } = medalCounts()
+  return `<div class="ach-medal-hud">
+    ${(['bronze', 'silver', 'gold'] as AchMedal[]).map((t) =>
+      `<div class="medal-cell m-${t}" title="${MEDAL_LABEL[t]}牌 · 按理论期望时长分档">
+        ${medalSvg(t)}
+        <b class="num">${got[t]}</b><em>/${total[t]}</em>
+      </div>`).join('')}
+  </div>`
+}
+
 let bannerShownLife = 0
 let bannerShownPro = 0
 let bannerStackEl: HTMLElement | null = null
@@ -154,19 +194,44 @@ function ensureBannerStack() {
   return bannerStackEl
 }
 
+/** 超长页回顶部：右下角悬浮，滚过一屏才出现 */
+function ensureTopBtn() {
+  let btn = document.getElementById('to-top') as HTMLButtonElement | null
+  if (!btn) {
+    btn = document.createElement('button')
+    btn.id = 'to-top'
+    btn.type = 'button'
+    btn.className = 'to-top'
+    btn.title = '回到顶部'
+    btn.setAttribute('aria-label', '回到顶部')
+    btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    document.body.appendChild(btn)
+    const sync = () => btn!.classList.toggle('show', window.scrollY > 320)
+    window.addEventListener('scroll', sync, { passive: true })
+  }
+  // 实心宽箭头（⬆️），不是细线 chevron
+  btn.innerHTML = '<svg class="to-top-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13.2h-5.2V20.5H8.2v-7.3H3z"/></svg>'
+  btn.classList.toggle('show', window.scrollY > 320)
+}
+
 function queueBanner(list: AchLike[]) {
   if (!list.length) return
   const stack = ensureBannerStack()
   const sorted = [...list].sort((a, b) => achWeight(b) - achWeight(a))
   for (const a of sorted) {
-    const w = achWeight(a)
     const el = document.createElement('div')
-    el.className = `ach-toast w${w}`
-    el.innerHTML = `<b>${a.name}</b><span>${w === 3 ? '隐藏' : w === 2 ? '荣誉' : '成就'}</span>`
+    const body = `<div class="toast-body"><b>${a.name}</b><small>${a.desc}</small></div>`
+    if (a.secret) {
+      el.className = `ach-toast secret m-${a.medal}`
+      el.innerHTML = `<i class="secret-mark" aria-hidden="true">?</i>${medalSvg(a.medal, 'medal-ico toast-medal')}${body}`
+    } else {
+      el.className = `ach-toast m-${a.medal}`
+      el.innerHTML = `${medalSvg(a.medal, 'medal-ico toast-medal')}${body}`
+    }
     stack.appendChild(el)
     while (stack.children.length > 4) stack.firstElementChild?.remove()
     window.setTimeout(() => el.classList.add('show'), 10)
-    const stay = fastForward ? 500 : w === 3 ? 2200 : w === 2 ? 1600 : 1200
+    const stay = fastForward ? 500 : a.secret ? 2800 : a.medal === 'gold' ? 1800 : a.medal === 'silver' ? 1500 : 1200
     window.setTimeout(() => {
       el.classList.remove('show')
       window.setTimeout(() => el.remove(), 320)
@@ -555,6 +620,7 @@ function renderHome() {
 /* ———————————— 调试抽屉（?debug=1） ———————————— */
 
 function mountDebug() {
+  ensureTopBtn()
   document.getElementById('debug-drawer')?.remove()
   if (!DEBUG) return
   const d = document.createElement('div')
@@ -613,7 +679,7 @@ function mountDebug() {
 function pageTop(title: string, onBack: () => void, extra = '') {
   return {
     html: `<div class="top"><h2>${title}</h2><div class="actions">${extra}<button class="btn btn-sm" id="back">返回</button></div></div>`,
-    bind: () => { $('back')!.onclick = onBack },
+    bind: () => { ensureTopBtn(); $('back')!.onclick = onBack },
   }
 }
 
@@ -621,9 +687,19 @@ function renderAchievements() {
   const rows = ACHIEVEMENTS.map((a) => {
     const got = !!meta.achievements[a.id]
     const hide = !got && (a.honor || a.secret)
-    return `<div class="ach-row ${got ? 'got' : ''} ${a.honor ? 'pro' : ''} ${a.secret ? 'secret' : ''}">
-      <b>${hide ? (a.secret ? '？' : '· · ·') : a.name}</b>
-      <span>${!hide ? a.desc : a.secret ? '隐藏' : '职业生涯荣誉'}</span>
+    // 未解锁隐藏：不露奖牌档 / 不叠三个「？」
+    let medal: string
+    if (!got && a.secret) {
+      medal = `<span class="medal-slot mystery" title="？" aria-hidden="true"></span>`
+    } else {
+      medal = `<span class="medal-slot ${got ? 'got' : 'dim'}" title="${MEDAL_LABEL[a.medal]}">${medalSvg(a.medal)}</span>`
+    }
+    const title = hide ? (a.secret ? '？' : '· · ·') : a.name
+    const desc = !hide ? a.desc : a.secret ? '' : '· · ·'
+    return `<div class="ach-row ${got ? 'got' : ''} ${a.honor ? 'pro' : ''} ${a.secret ? 'secret' : ''} ${!got && a.secret ? 'locked-secret' : ''} ${got || !a.secret ? `m-${a.medal}` : ''}">
+      <b>${title}</b>
+      <span>${desc}</span>
+      ${medal}
     </div>`
   }).join('')
   const n = achCount(meta)
@@ -632,7 +708,8 @@ function renderAchievements() {
   const top = pageTop(`成就 <span class="num" style="font-size:0.9em">${n}</span><span style="color:var(--bone-faint)">/${ACHIEVEMENTS.length}</span>`, renderHome)
   app.innerHTML = `<div class="reveal">
     ${top.html}
-    <p class="tip">每个成就都让下辈子摇到天才 / 怪物的概率高 0.1%。攒到下面的档位，还会解锁下辈子永久带着的 buff——前期多打几季、中后期给隐藏天赋和职业高光铺路。✦ 为职业生涯荣誉，？为隐藏。开挂之后这辈子解锁的成就不计。</p>
+    ${medalHudHtml()}
+    <p class="tip">每个成就都让下辈子摇到天才 / 怪物的概率高 0.1%。攒到下面的档位，还会解锁下辈子永久带着的 buff——前期多打几季、中后期给隐藏天赋和职业高光铺路。铜 / 银 / 金按理论期望时长分档。开挂之后这辈子解锁的成就不计。</p>
     <div class="section"><div class="label">成就奖励 · 攒够数就永久生效</div>${perkRows}</div>
     <div class="section">${rows}</div>
     ${ends.length ? `<div class="section"><div class="label">结局收集</div><p class="tip">${ends.map(([k, v]) => `${ENDING_NAME[k] ?? k} ×${v}`).join(' · ')}</p></div>` : ''}
@@ -863,12 +940,15 @@ function lifeTimeline(g: LifeState) {
   return `<div class="section"><div class="label">年表</div><div class="tl">${rows}</div></div>`
 }
 
-/** 新成就：隐藏 > 荣誉 > 普通排前面，隐藏和荣誉做大卡 */
+/** 新成就：隐藏优先，再按奖牌档；大卡带奖牌 */
 function newAchCards(list: AchLike[]) {
   if (!list.length) return ''
   const sorted = [...list].sort((a, b) => achWeight(b) - achWeight(a))
   return `<div class="section"><div class="label">新成就 · ${sorted.length}</div>
-    ${sorted.map((a) => { const w = achWeight(a); return `<div class="ach-row got ${w === 3 ? 'secret big' : w === 2 ? 'pro big' : ''}"><b>${a.name}</b><span>${a.desc}</span></div>` }).join('')}
+    ${sorted.map((a) => `<div class="ach-row got big ${a.secret ? 'secret' : a.honor ? 'pro' : ''} m-${a.medal}">
+      <b>${a.name}</b><span>${a.desc}</span>
+      <span class="medal-slot got">${medalSvg(a.medal)}</span>
+    </div>`).join('')}
   </div>`
 }
 
@@ -1266,6 +1346,7 @@ function renderSettingsInGame() {
 }
 
 renderHome()
+ensureTopBtn()
 
 // 直达入口（分享链接 / 调试）：?go=play|ach|about|pro
 {

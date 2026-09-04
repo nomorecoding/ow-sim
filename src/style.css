@@ -481,25 +481,114 @@ html.path-dark body::before {
   border-left: 2px solid currentColor;
   line-height: 1.2;
 }
-/* ———— 成就：右下角正常尺寸叠层 ———— */
+/* ———— 成就：左下角扁长叠层（右下留给回顶） ———— */
 .ach-banner-stack {
-  position: fixed; right: 14px; bottom: 16px; z-index: 40;
-  display: flex; flex-direction: column-reverse; gap: 8px;
-  max-width: min(300px, calc(100% - 28px)); pointer-events: none;
+  position: fixed; left: 14px; right: auto; bottom: 16px; z-index: 40;
+  display: flex; flex-direction: column-reverse; gap: 6px;
+  max-width: min(380px, calc(100% - 96px)); pointer-events: none;
 }
 .ach-toast {
-  padding: 12px 14px 11px; background: rgba(12, 14, 20, 0.94); border: 1px solid var(--hair-2);
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 9px 10px; background: rgba(12, 14, 20, 0.94); border: 1px solid var(--hair-2);
   border-left: 3px solid var(--bone-dim); opacity: 0; transform: translateY(10px);
-  transition: opacity 0.28s, transform 0.28s; font-size: 0.8rem; line-height: 1.4;
+  transition: opacity 0.28s, transform 0.28s; font-size: 0.78rem; line-height: 1.25;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  width: max-content; max-width: 100%;
 }
 .ach-toast.show { opacity: 0.96; transform: none; }
-.ach-toast b { display: block; font-family: var(--display); letter-spacing: 0.1em; font-size: 0.95rem; color: var(--bone); margin-bottom: 2px; }
-.ach-toast span { color: var(--bone-dim); letter-spacing: 0.08em; font-size: 0.72rem; }
-.ach-toast.w2 { border-left-color: var(--brass); }
-.ach-toast.w2 b { color: var(--brass); }
-.ach-toast.w3 { border-left-color: #b8a1e6; }
-.ach-toast.w3 b { color: #c9b6f2; }
+.ach-toast .toast-body {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+}
+.ach-toast b {
+  display: block; font-family: var(--display); letter-spacing: 0.1em;
+  font-size: 0.88rem; color: var(--bone); margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ach-toast small {
+  display: block; color: var(--bone-dim); font-size: 0.66rem; letter-spacing: 0.04em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16em;
+}
+.ach-toast .toast-medal { width: 1.7em; height: 1.7em; flex: 0 0 auto; }
+.ach-toast.m-bronze { border-left-color: #b07848; }
+.ach-toast.m-silver { border-left-color: #a8b4c4; }
+.ach-toast.m-silver b { color: #c5ceda; }
+.ach-toast.m-gold { border-left-color: #d4a84b; }
+.ach-toast.m-gold b { color: #e8c56a; }
+
+/* 隐藏成就：神秘款 — 更大、靛紫、问号水印、停留更久 */
+.ach-toast.secret {
+  position: relative; overflow: hidden;
+  padding: 12px 18px 12px 12px; gap: 12px;
+  border: 1px solid rgba(140, 110, 210, 0.45);
+  border-left: 3px solid #9b7fd4;
+  background: linear-gradient(105deg, rgba(48, 28, 78, 0.92), rgba(14, 12, 24, 0.96) 55%);
+  box-shadow: 0 10px 32px rgba(40, 20, 80, 0.45), inset 0 0 24px rgba(120, 80, 200, 0.12);
+}
+.ach-toast.secret.show { opacity: 1; }
+.ach-toast.secret b {
+  font-size: 0.98rem; letter-spacing: 0.14em; color: #d4c4f5;
+}
+.ach-toast.secret small { color: rgba(200, 180, 240, 0.65); max-width: 18em; }
+.ach-toast.secret .toast-medal { width: 1.9em; height: 1.9em; }
+.ach-toast.secret .secret-mark {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-family: var(--display); font-style: normal; font-size: 2.4rem;
+  color: rgba(180, 150, 240, 0.14); letter-spacing: 0; pointer-events: none;
+  line-height: 1;
+}
+.ach-toast.secret .toast-body { position: relative; z-index: 1; padding-right: 1.2em; }
+
+/* 成就页奖牌 HUD */
+.ach-medal-hud {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin: 0 0 16px;
+}
+.medal-cell {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 10px 12px; border: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.02);
+}
+.medal-cell .medal-ico { width: 1.4em; height: 1.4em; flex: 0 0 auto; align-self: center; }
+.medal-cell b { font-family: var(--numeral); font-size: 1.25rem; color: var(--bone); font-weight: 500; }
+.medal-cell em { font-style: normal; font-size: 0.72rem; color: var(--bone-faint); letter-spacing: 0.04em; }
+.medal-cell.m-bronze { border-color: rgba(176, 120, 72, 0.35); }
+.medal-cell.m-silver { border-color: rgba(168, 180, 196, 0.35); }
+.medal-cell.m-gold { border-color: rgba(212, 168, 75, 0.4); }
+
+.medal-ico { display: block; flex-shrink: 0; }
+.medal-slot {
+  grid-column: 2; grid-row: 1 / span 2; align-self: center; justify-self: end;
+  opacity: 0.35; line-height: 0;
+}
+.medal-slot .medal-ico { width: 1.25em; height: 1.25em; }
+.medal-slot.got { opacity: 1; }
+.medal-slot.dim { opacity: 0.28; }
+.medal-slot.locked { opacity: 0.18; filter: grayscale(0.6); }
+.medal-slot.mystery {
+  opacity: 0.5;
+  width: 1.25em; height: 1.25em;
+  border: 1px dashed rgba(168, 143, 224, 0.45);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.ach-row.locked-secret b { color: #a88fe0; letter-spacing: 0.2em; }
+.ach-row.locked-secret > span:empty { min-height: 0; }
+
+/* 回顶部：右下角悬浮箭头 */
+.to-top {
+  position: fixed; right: 14px; bottom: 16px; z-index: 45;
+  width: 3.2em; height: 3.2em; padding: 0; margin: 0;
+  border: 1px solid var(--hair-2); border-radius: 2px;
+  background: rgba(12, 14, 20, 0.92); color: var(--bone-dim);
+  font-size: 1.15rem; line-height: 1;
+  cursor: pointer; opacity: 0; pointer-events: none; transform: translateY(6px);
+  transition: opacity 0.22s, transform 0.22s, color 0.2s, border-color 0.2s;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  display: flex; align-items: center; justify-content: center;
+}
+.to-top.show { opacity: 0.92; pointer-events: auto; transform: none; }
+.to-top:hover { color: var(--brass); border-color: var(--brass); }
+.to-top-ico { width: 1.25em; height: 1.25em; display: block; fill: currentColor; }
 
 .dark-box { border-color: #c45a5a; }
 
@@ -659,7 +748,6 @@ html.path-dark body::before {
 }
 .hidden { color: #b8a1e6; border-left-color: rgba(168, 143, 224, 0.6) !important; }
 .hl.hidden { border-left-width: 1px; }
-.ach-row.secret b::before { content: "？ "; color: #a88fe0; font-size: 0.7em; }
 .ach-row.secret.got b { color: #b8a1e6; }
 
 .tal-row {
@@ -735,11 +823,10 @@ html.path-dark body::before {
   font-size: 0.78rem; color: var(--bone-faint);
 }
 .ach-row:last-child { border-bottom: 0; }
-.ach-row b { color: var(--bone-faint); font-weight: 500; letter-spacing: 0.04em; grid-row: 1; }
-.ach-row span { grid-column: 1; }
+.ach-row b { color: var(--bone-faint); font-weight: 500; letter-spacing: 0.04em; grid-row: 1; grid-column: 1; }
+.ach-row > span:not(.medal-slot) { grid-column: 1; }
 .ach-row.got b { color: var(--bone); }
-.ach-row.got span { color: var(--bone-dim); }
-.ach-row.pro b::before { content: "✦ "; color: var(--brass); font-size: 0.7em; }
+.ach-row.got > span:not(.medal-slot) { color: var(--bone-dim); }
 .ach-row.pro.got b { color: var(--brass); }
 
 /* ———— 红框 / 禁言 ———— */
@@ -959,6 +1046,5 @@ label.row { cursor: pointer; }
 [data-theme="paper"] .rank-plat { color: #4c5b66; } [data-theme="paper"] .rank-emerald { color: #23795a; } [data-theme="paper"] .rank-diamond { color: #2e5fa3; }
 [data-theme="paper"] .rank-master { color: #5f7a1c; } [data-theme="paper"] .rank-gm { color: #6b3fa0; }
 [data-theme="paper"] .rank-champ { color: #b5651d; text-shadow: none; } [data-theme="paper"] .rank-top { color: #a8281c; text-shadow: none; }
-[data-theme="paper"] .ach-row.pro b::before { color: var(--brass); }
 [data-theme="paper"] .redbox-id, [data-theme="paper"] .mute-line { border-color: var(--brass); }
 [data-theme="paper"] input[type="range"], [data-theme="paper"] input[type="checkbox"] { accent-color: var(--brass); }

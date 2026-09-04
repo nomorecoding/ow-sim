@@ -47,10 +47,15 @@ export interface SeasonEnding {
   rankLabel: string
 }
 
+/** 成就奖牌：按理论期望时长分三档 */
+export type AchMedal = 'bronze' | 'silver' | 'gold'
+
 export interface Achievement {
   id: string
   name: string
   desc: string
+  /** 理论期望时长分档：铜 < 银 < 金 */
+  medal: AchMedal
   /** 职业模式荣誉：金框展示，解锁前连描述都不给 */
   honor?: boolean
   /** 隐藏成就：解锁前只显示「？」 */
