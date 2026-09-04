@@ -1081,8 +1081,17 @@ label.row { cursor: pointer; }
 }
 .share-x:hover { color: var(--brass); }
 .share-scroll {
-  flex: 1 1 auto; overflow-y: auto; margin-bottom: 10px;
+  flex: 1 1 auto; overflow-y: auto; margin-bottom: 8px;
   -webkit-overflow-scrolling: touch;
+}
+.share-poster {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--hair-2);
+  background: var(--ink);
+  /* 微信长按识别为图片 */
+  -webkit-touch-callout: default;
+  pointer-events: auto;
+  user-select: none;
 }
 .share-card {
   position: relative; overflow: hidden;
@@ -1090,6 +1099,11 @@ label.row { cursor: pointer; }
   background: var(--ink);
   border: 1px solid var(--hair-2);
   min-height: 360px;
+}
+/* 离屏画海报：固定宽度保证导出清晰 */
+.share-paint {
+  position: fixed; left: -10000px; top: 0;
+  width: 390px; border: 0; pointer-events: none;
 }
 .share-card.dark {
   background:
@@ -1127,8 +1141,14 @@ label.row { cursor: pointer; }
 .share-err { color: var(--clay); }
 .share-actions { flex: 0 0 auto; display: flex; flex-direction: column; }
 .share-tip {
-  margin: 6px 0 0; text-align: center;
-  color: var(--bone-faint); font-size: 0.68rem; letter-spacing: 0.06em;
+  margin: 0 0 10px; text-align: left;
+  color: var(--brass); font-size: 0.74rem; letter-spacing: 0.04em; line-height: 1.55;
+  padding: 0 2px;
+}
+.share-tip.pulse { animation: shareTipPulse 0.6s ease; }
+@keyframes shareTipPulse {
+  0%, 100% { opacity: 1; }
+  40% { opacity: 0.35; }
 }
 
 /* 外挂 / 永封：左上斜红 BAN */
