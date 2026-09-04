@@ -2,7 +2,7 @@ import './style.css'
 import type { Achievement, AchMedal, HiddenTalent, LifeState, LogLine, MetaSave, RankState, TalentTier, Team } from './types'
 import {
   ACH_PERKS, DEFAULT_SPEED, FORM_INFO, HIDDEN_INFO, INTL_NAME, LIFE_TICK_MS, MAJOR_NAME, MAX_SPEED, MIN_SPEED, PRO_TICK_RATIO, QUIT_AGE, RANK_COLOR_CLASS, SCOUT_MAX_AGE,
-  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TALENT_SHIFT_CAP, TALENT_SHIFT_PER, TEAM_TIER_CLASS, topPlace,
+  PRO_LEVELS, PRO_LEVEL_CLASS, PRO_TALENT_INFO, STAGE_INFO, START_AGE, TALENT_INFO, TALENT_ORDER, TALENT_SHIFT_CAP, TALENT_SHIFT_PER, TEAM_TIER_CLASS, TEAMS, topPlace,
 } from './data/constants'
 import { ACHIEVEMENTS, ACH_MAP } from './data/achievements'
 import { levelNeed, talentProbs, talentShift } from './data/talent'
@@ -10,17 +10,32 @@ import { achCount, beginLife, chooseDark, clearAllSaves, commitLife, createLife,
 import { clamp, scoreToRank } from './sim/rank'
 import { beginCareerRun, careerInProgress, exposureP, proStep, retireNow, teamOf, teamRating } from './sim/pro'
 import { openShareSheet, type SharePoster } from './share'
+import { initAnalytics, trackEvent } from './analytics'
 
 const fmt = (n: number) => n.toLocaleString()
 const DEBUG = new URLSearchParams(location.search).has('debug')
 const teamLogoUrl = (file: string) => `${import.meta.env.BASE_URL}teams/${file}`
 
-/** 队名徽章：logo + 队名，边框按档位越来越炫；外援挂角标 */
+/** 预加载全部队徽，避免职业快刷时 img 反复新建来不及解码 */
+const logoReady = new Set<string>()
+function preloadTeamLogos() {
+  for (const t of TEAMS) {
+    const url = teamLogoUrl(t.logo)
+    if (logoReady.has(url)) continue
+    const img = new Image()
+    img.decoding = 'async'
+    img.onload = () => { logoReady.add(url) }
+    img.src = url
+  }
+}
+
+/** 队名徽章：logo + 队名；外援挂角标 */
 function teamBadge(t: Team | null) {
-  if (!t) return `<div class="team-badge tm-free"><span class="tb-name">自由人</span></div>`
+  if (!t) return `<div class="team-badge tm-free" data-team="free"><span class="tb-name">自由人</span></div>`
   const tag = t.region !== 'cn' ? '<em class="tb-tag">外援</em>' : ''
-  return `<div class="team-badge ${TEAM_TIER_CLASS[t.tier]}">
-    <img class="tb-logo" src="${teamLogoUrl(t.logo)}" alt="" width="36" height="36" decoding="async" />
+  const url = teamLogoUrl(t.logo)
+  return `<div class="team-badge ${TEAM_TIER_CLASS[t.tier]}" data-team="${t.id}">
+    <img class="tb-logo" src="${url}" alt="" width="36" height="36" decoding="async" loading="eager" fetchpriority="high" />
     <div class="tb-text"><b class="tb-name">${t.name}</b>${tag}</div>
   </div>`
 }
@@ -373,7 +388,10 @@ function proSharePoster(): SharePoster {
 }
 
 function bindShare(poster: SharePoster) {
-  $('btn-share')?.addEventListener('click', () => { void openShareSheet(poster) })
+  $('btn-share')?.addEventListener('click', () => {
+    trackEvent('share', '分享本局')
+    openShareSheet(poster)
+  })
 }
 
 /** 黑暗线 / 职业脏档时给整页加一圈微红光 */
@@ -811,6 +829,7 @@ function startLife() {
   stopProTimer()
   paused = false
   fastForward = false
+  trackEvent('life_start', '开始一段人生')
   committed = false
   commitResult = null
   life = createLife(meta)
@@ -1213,7 +1232,13 @@ function proHud() {
   const t = teamOf(p.teamId)
   const fi = FORM_INFO[p.form]
   const talent = p.talent ?? 'normal'
-  set('pro-title', teamBadge(t))
+  // 队徽：同一队不重建 DOM，否则手机快刷时 PNG 反复打断加载
+  const teamKey = t ? t.id : 'free'
+  const titleEl = $('pro-title')
+  if (titleEl && titleEl.getAttribute('data-team-key') !== teamKey) {
+    titleEl.setAttribute('data-team-key', teamKey)
+    titleEl.innerHTML = teamBadge(t)
+  }
   set('pro-meta', `<span>第 <span class="num">${p.year + 1}</span> 年 · <span class="num">${p.age}</span> 岁 · ${p.stageAt ? `Stage <span class="num">${p.stageAt}</span>/3` : '年初'}</span><span>峰值 <span class="${PRO_LEVEL_CLASS[p.peakLevel]}">${PRO_LEVELS[p.peakLevel]}</span></span>${p.suspended ? `<span class="ban">禁赛 ${p.suspended}</span>` : ''}`)
   set('pro-level', `<span class="${PRO_LEVEL_CLASS[p.level]}"><span class="cn">${PRO_LEVELS[p.level]}</span></span><small class="lv-note">${p.lvNote || ''}</small>`)
   set('pro-side', `${proTalentPlate(talent, p.hidden ?? null)}<span class="form-chip ${fi.cls}">${fi.name}</span>`)
@@ -1262,6 +1287,8 @@ function startProRun() {
   `
   proShownLog = 0
   proShownHl = 0
+  const titleHost = $('pro-title')
+  if (titleHost) titleHost.removeAttribute('data-team-key')
   proLogs()
   proHud()
   $('btn-pro-pause')!.onclick = () => { proPaused = true; stopProTimer(); $('btn-pro-ff')!.textContent = fastForward ? '取消快进' : '快进'; showSheet('pro-pause') }
@@ -1438,6 +1465,8 @@ function renderSettingsInGame() {
 
 renderHome()
 ensureTopBtn()
+preloadTeamLogos()
+initAnalytics()
 
 // 直达入口（分享链接 / 调试）：?go=play|ach|about|pro
 {

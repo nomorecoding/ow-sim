@@ -14,9 +14,17 @@ npm run dev
 ## 分享
 
 - **链接**：上面的 GitHub Pages 地址，丢群里即可。每人浏览器各自存档，换设备不同步。
-- **结算海报**：天梯 / 职业结算页点「分享本局」，生成带二维码的海报，扫码进主页开玩；可保存图片、复制链接。
+- **结算海报**：天梯 / 职业结算页点「分享本局」，生成 PNG（Canvas），微信里长按图片保存到相册再转发。
 - **单文件**：`npm run build:single` 生成 `single/守望天梯人生.html`，一个文件，发群里双击就能玩，离线可用。
 - 直达链接：`?go=play` 直接开局，`?go=pro` / `ach` / `about` 直达对应页。
+
+## 流量看板
+
+用免费 [GoatCounter](https://www.goatcounter.com)（无 cookie）：
+
+1. 注册并创建站点，记下站点码（如 `ow-sim`）
+2. 改 `src/analytics.ts` 里的 `GOATCOUNTER_CODE = '你的站点码'`
+3. 推送后打开 `https://你的站点码.goatcounter.com` 看 PV / UV；另有「开始人生 / 分享」事件
 
 ## 机制速览
 

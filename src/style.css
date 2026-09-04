@@ -386,6 +386,9 @@ html.path-dark body::before {
 .team-badge .tb-logo {
   width: 36px; height: 36px; object-fit: contain; flex: 0 0 auto;
   background: rgba(0, 0, 0, 0.35); border-radius: 4px;
+  /* 占位，避免未解码时塌缩；解码后自然盖住 */
+  image-rendering: auto;
+  content-visibility: auto;
 }
 .team-badge .tb-text { min-width: 0; line-height: 1.2; }
 .team-badge .tb-name {
